@@ -160,7 +160,7 @@ export default function Page() {
     }
   }
   return (
-    <div className="min-h-screen px-4 py-10">
+    <div className="px-4 py-10">
       <div className="mx-auto mb-6 flex w-full max-w-[180px] items-center justify-center">
         <LogoComponent />
       </div>
