@@ -40,15 +40,17 @@ export default function LoginPage() {
       console.log('Login payload:', form) 
       const endpoint =  formData.backend + location.pathname + "auth"
       
-
+      
       const response  =   await formData.handleRequest(endpoint, "post", form);
 
-      const user      =   response?.user
-        ? { ...response.user, token: response?.token }
-        : null;
+      if (response?.token) {
+        const authUser = response?.user
+          ? { ...response.user, token: response.token }
+          : { token: response.token };
 
-      localStorage.setItem("user", JSON.stringify(user));
-      localStorage.setItem("token", JSON.stringify(response?.token));
+        localStorage.setItem("user", JSON.stringify(authUser));
+        localStorage.setItem("token", JSON.stringify(response.token));
+      }
 
       /*
       window.dispatchEvent(
@@ -63,6 +65,7 @@ export default function LoginPage() {
       }
 
     } catch (error) {
+      
       console.error(error)
     } finally {
       setLoading(false)
