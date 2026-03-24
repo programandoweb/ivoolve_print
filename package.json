@@ -1,0 +1,20 @@
+{
+  "name": "pos-printer-app",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/api",
+    "apps/desktop"
+  ],
+  "scripts": {
+    "install:all": "npm install --workspaces",
+    "dev:api": "npm run start:dev --workspace=api",
+    "dev:desktop": "npm run dev --workspace=desktop",
+    "start": "concurrently -k \"npm run dev:api\" \"npm run dev:desktop\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electronmon": "^2.0.4",
+    "wait-on": "^9.0.4"
+  }
+}

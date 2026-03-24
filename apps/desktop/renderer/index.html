@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <title>POS</title>
+</head>
+<body class="bg-gray-100">
+  <div class="flex h-screen">
+
+    <!-- Sidebar -->
+    <aside class="w-64 bg-white border-r p-4">
+      <h1 class="text-xl font-bold text-pink-500 mb-6">Delice</h1>
+
+      <nav class="space-y-2">
+        <button onclick="navigate('dashboard')" class="block w-full text-left p-2 rounded hover:bg-gray-100">
+          Escritorio
+        </button>
+        <button onclick="navigate('print')" class="block w-full text-left p-2 rounded hover:bg-gray-100">
+          Impresión
+        </button>
+        <button onclick="navigate('history')" class="block w-full text-left p-2 rounded hover:bg-gray-100">
+          Historial
+        </button>
+      </nav>
+    </aside>
+
+    <!-- Content -->
+    <main class="flex-1 p-6">
+      <div id="app"></div>
+    </main>
+
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

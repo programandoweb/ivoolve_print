@@ -1,0 +1,71 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Dependency directories
+node_modules/
+**/node_modules/
+
+# Build outputs
+dist/
+build/
+out/
+coverage/
+**/dist/
+**/build/
+
+# TypeScript
+*.tsbuildinfo
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Electron
+apps/app/.env
+apps/desktop/.env
+apps/desktop/release/
+apps/desktop/*.exe
+apps/desktop/*.msi
+apps/desktop/*.dmg
+apps/desktop/*.deb
+apps/desktop/*.AppImage
+apps/desktop/*.blockmap
+apps/desktop/latest*.yml
+
+# Nest / temp
+.tmp/
+temp/
+tmp/
+
+# Cache
+.cache/
+.parcel-cache/
+.eslintcache
+
+# Optional lockfiles from other managers
+yarn.lock
+pnpm-lock.yaml
+
+# Local printer/debug artifacts
+prints/
+tickets/
+debug/

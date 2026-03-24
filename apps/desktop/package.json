@@ -1,0 +1,21 @@
+{
+  "name": "desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Aplicación desktop Electron para impresión térmica",
+  "main": "main.js",
+  "scripts": {
+    "dev:next": "npm run dev --prefix frontend",
+    "dev:electron": "wait-on tcp:3000 && electronmon .",
+    "dev": "concurrently \"npm run dev:next\" \"npm run dev:electron\""
+  },
+  "dependencies": {
+    "axios": "^1.13.6",
+    "electron": "^41.0.3"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "electronmon": "^2.0.4",
+    "wait-on": "^9.0.4"
+  }
+}
