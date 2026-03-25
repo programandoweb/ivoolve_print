@@ -50,7 +50,7 @@ export class PrintController {
 
       return Array.from({ length: quantity }, () => ({
         title: label?.title || '',
-        code: label?.code || '',
+        code: label?.code + " " + label?.code || '',
         variant_name: label?.variant_name || label?.variant || '',
       }))
     })
@@ -71,7 +71,7 @@ export class PrintController {
           <div class="label">
             <div class="title">${this.escapeHtml(label.title)}</div>
             <img src="${barcode}" class="barcode" />
-            <div class="code">${this.escapeHtml(code)}  </div>
+            <div class="code">${this.escapeHtml(code)} - TKA</div>
             <div class="variant">${this.escapeHtml(label.variant_name)}</div>
           </div>
         `

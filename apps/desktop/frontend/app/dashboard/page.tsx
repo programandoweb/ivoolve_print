@@ -36,6 +36,7 @@ export default function Page() {
   const [printing, setPrinting] = useState(false)
   const [data, setData] = useState<any>(null)
   const [print, setPrint] = useState<any>([])
+  const [printQuantity, setPrintQuantity] = useState('')
 
   const totalQuantity = useMemo(() => {
     if (!data?.items?.length) return 0
@@ -74,7 +75,6 @@ export default function Page() {
       if (response?.print) {
         setPrint(response.print)
       }
-      
     } catch (error) {
       console.error(error)
     } finally {
@@ -85,11 +85,26 @@ export default function Page() {
   const handleReset = () => {
     setData(null)
     setSearch('')
+    setPrintQuantity('')
   }
 
   const handlePrint = async () => {
     try {
       if (!data?.id) return
+
+      const quantity = printQuantity.trim()
+
+      if (!quantity) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: 'Debes ingresar un valor válido',
+              type: 'error',
+            },
+          })
+        )
+        return
+      }
 
       setPrinting(true)
 
@@ -105,9 +120,11 @@ export default function Page() {
       })
         */
 
-      const payload = { print }
+      const payload = { print, quantity }
 
-      console.log('Payload etiquetas:', payload)      
+      console.log('Payload etiquetas:', payload)
+
+      return;
 
       if (typeof window === 'undefined' || !window.api?.print) {
         window.dispatchEvent(
@@ -210,10 +227,18 @@ export default function Page() {
               </div>
 
               <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={printQuantity}
+                  onChange={(e) => setPrintQuantity(e.target.value)}
+                  placeholder="Cantidad"
+                  className="h-11 w-[110px] rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-900 outline-none transition focus:border-pink-500 focus:ring-2 focus:ring-pink-200"
+                />
+
                 <button
                   type="button"
                   onClick={handlePrint}
-                  disabled={printing}
+                  disabled={printing || !printQuantity.trim()}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-pink-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <FiPrinter size={18} />
