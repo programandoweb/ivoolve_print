@@ -40,6 +40,46 @@ export default function Page() {
   const [print, setPrint] = useState<any[]>([])
   const [printQuantity, setPrintQuantity] = useState('')
 
+  const fetchProductionOrder = async (
+    searchValue: string,
+    options?: { resetPrintQuantity?: boolean }
+  ) => {
+    if (!searchValue.trim()) return null
+
+    setLoading(true)
+
+    try {
+      const endpoint = formData.backend + location.pathname
+
+      const response = await formData.handleRequest(
+        endpoint + '/production-order',
+        'post',
+        {
+          search: searchValue.trim(),
+        }
+      )
+
+      if (response?.order) {
+        setData(response.order)
+      }
+
+      if (response?.print) {
+        setPrint(response.print)
+      }
+
+      if (options?.resetPrintQuantity !== false) {
+        setPrintQuantity('')
+      }
+
+      return response
+    } catch (error) {
+      console.error(error)
+      return null
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     if (!user?.token || !process.env.NEXT_PUBLIC_SOCKET_URL_PRINT) return
     console.log('conexión', process.env.NEXT_PUBLIC_SOCKET_URL_PRINT)
@@ -48,6 +88,8 @@ export default function Page() {
       transports: ['websocket'],
       auth: {
         token: user.token,
+        userName: user.name,
+        role: user.role,
       },
     })
 
@@ -58,7 +100,7 @@ export default function Page() {
     }
 
     const handleConnectError = (error: Error) => {
-      console.error('Error de conexión socket:', error.message)
+      console.log('Error de conexión socket:', error)
     }
 
     const handlePrinterConnected = (response: unknown) => {
@@ -82,6 +124,29 @@ export default function Page() {
       )
     }
 
+    const handlePrinterJob = async (data: any) => {
+      const batchCode = data?.payload?.batch_code
+      const abbreviation = data?.payload?.abbreviation
+
+      console.log('printer:job => eso es', batchCode, abbreviation)
+
+      if (!batchCode) return
+
+      setSearch(String(batchCode))
+      setPrintQuantity(abbreviation || '')
+      await fetchProductionOrder(String(batchCode), { resetPrintQuantity: false })
+    }
+
+    socket.on('connect', () => {
+      console.log('RECEPTOR conectado:', socket.id)
+    })
+
+    socket.onAny((event, ...args) => {
+      console.log('RECEPTOR onAny =>', event, args)
+    })
+
+    socket.on('printer:job', handlePrinterJob)
+
     socket.on('connect', handleConnect)
     socket.on('connect_error', handleConnectError)
     socket.on('printer:connected', handlePrinterConnected)
@@ -94,6 +159,7 @@ export default function Page() {
       socket.off('printer:connected', handlePrinterConnected)
       socket.off('printer:response', handlePrinterResponse)
       socket.off('printer:ack', handlePrinterAck)
+      socket.off('printer:job', handlePrinterJob)
       socket.disconnect()
       socketRef.current = null
     }
@@ -114,36 +180,7 @@ export default function Page() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-
-    if (!search.trim()) return
-
-    setLoading(true)
-
-    try {
-      const endpoint = formData.backend + location.pathname
-
-      const response = await formData.handleRequest(
-        endpoint + '/production-order',
-        'post',
-        {
-          search: search.trim(),
-        }
-      )
-
-      if (response?.order) {
-        setData(response.order)
-      }
-
-      if (response?.print) {
-        setPrint(response.print)
-      }
-
-      setPrintQuantity('')
-    } catch (error) {
-      console.error(error)
-    } finally {
-      setLoading(false)
-    }
+    await fetchProductionOrder(search, { resetPrintQuantity: true })
   }
 
   const handleReset = () => {
@@ -222,6 +259,8 @@ export default function Page() {
     }
   }
 
+  console.log(printing,printQuantity)
+
   return (
     <div className="px-4 py-10">
       <div className="mx-auto mb-6 flex w-full max-w-[180px] items-center justify-center">
@@ -258,7 +297,9 @@ export default function Page() {
           <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-6">
               <ProductionHeader productName={data?.product?.name} />
-
+              {
+                console.log(printing,printQuantity)
+              }
               <ProductionActions
                 value={printQuantity}
                 printing={printing}

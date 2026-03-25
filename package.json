@@ -5,13 +5,15 @@
   "workspaces": [
     "apps/api",
     "apps/desktop",
-    "apps/desktop/frontend"
+    "apps/desktop/frontend",
+    "apps/socket"
   ],
   "scripts": {
     "install:all": "npm install --workspaces",
     "dev:api": "npm run start:dev --workspace=api",
     "dev:desktop": "npm run dev --workspace=desktop",
     "dev:frontend": "npm run dev --workspace=frontend",
+    "dev:socket": "npm run start:dev --workspace=printer-socket-nest",
     "start": "concurrently -k \"npm run dev:api\" \"npm run dev:desktop\""
   },
   "devDependencies": {
