@@ -68,4 +68,4 @@ pnpm-lock.yaml
 # Local printer/debug artifacts
 prints/
 tickets/
-debug/
+debug/apps.zip 

@@ -1,4 +1,4 @@
-import { Controller, Post, Body, Res } from '@nestjs/common'
+import { Controller, Post, Get, Body, Res } from '@nestjs/common'
 import { Response } from 'express'
 import * as bwipjs from 'bwip-js'
 
@@ -6,22 +6,43 @@ import * as bwipjs from 'bwip-js'
 export class PrintController {
   @Post('labels')
   async generateLabels(@Body() body: any, @Res() res: Response) {
-
     const labels = Array.isArray(body?.print) ? body.print : []
+    const html = await this.buildHtml(labels)
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
+    return res.send(html)
+  }
+
+  @Get('labels-preview')
+  async previewLabels(@Res() res: Response) {
+    const labels = [
+      {
+        title: 'PRODUCTO DEMO',
+        code: '123456',
+        variant_name: 'TALLA M',
+        quantity: 1,
+      },
+      {
+        title: 'OTRO PRODUCTO',
+        code: '123455',
+        variant_name: 'TALLA L',
+        quantity: 2,
+      },
+      {
+        title: 'OTRO PRODUCTO',
+        code: '123459',
+        variant_name: 'TALLA L',
+        quantity: 3,
+      },
+    ]
 
     const html = await this.buildHtml(labels)
 
-    res.setHeader('Content-Type', 'text/html')
+    res.setHeader('Content-Type', 'text/html; charset=utf-8')
     return res.send(html)
   }
 
   private async buildHtml(labels: any[]) {
-    /**
-     * Expande por quantity:
-     * si una etiqueta tiene quantity 10, genera 10 etiquetas visuales iguales
-     */
-
-    //console.log(labels)
     const expandedLabels = labels.flatMap((label) => {
       const quantity = Number(label?.quantity || 0)
 
@@ -29,18 +50,15 @@ export class PrintController {
 
       return Array.from({ length: quantity }, () => ({
         title: label?.title || '',
-        code: label?.code || '',
+        code: label?.code + " " + label?.code || '',
         variant_name: label?.variant_name || label?.variant || '',
       }))
     })
 
-    /**
-     * Cache simple para no regenerar el mismo barcode muchas veces
-     */
     const barcodeCache = new Map<string, string>()
 
     const labelsHtmlArray = await Promise.all(
-      expandedLabels.map(async (label) => {
+      expandedLabels.map(async (label, key) => {
         const code = String(label.code || '')
         let barcode = barcodeCache.get(code)
 
@@ -52,17 +70,29 @@ export class PrintController {
         return `
           <div class="label">
             <div class="title">${this.escapeHtml(label.title)}</div>
-
             <img src="${barcode}" class="barcode" />
-
-            <div class="code">${this.escapeHtml(code)}</div>
+            <div class="code">${this.escapeHtml(code)} - TKA</div>
             <div class="variant">${this.escapeHtml(label.variant_name)}</div>
           </div>
         `
       })
     )
 
-    const labelsHtml = labelsHtmlArray.join('')
+    const rows: string[] = []
+
+    for (let i = 0; i < labelsHtmlArray.length; i += 3) {
+      const col1 = labelsHtmlArray[i] || ''
+      const col2 = labelsHtmlArray[i + 1] || ''
+      const col3 = labelsHtmlArray[i + 2] || ''
+
+      rows.push(`
+        <tr>
+          <td>${col1}</td>
+          <td>${col2}</td>
+          <td>${col3}</td>
+        </tr>
+      `)
+    }
 
     return `
     <!DOCTYPE html>
@@ -73,7 +103,7 @@ export class PrintController {
 
       <style>
         @page {
-          size: 150mm auto;
+          size: 100mm auto;
           margin: 0;
         }
 
@@ -81,64 +111,113 @@ export class PrintController {
           box-sizing: border-box;
         }
 
+        html,
         body {
           margin: 0;
-          padding: 4mm;
+          padding: 0;
           font-family: Arial, sans-serif;
+          width: 100%;
+          height: auto;
         }
 
-        .sheet {
-          display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 2mm;
+        body {
+          display: flex;
+          justify-content: center;
+          align-items: flex-start;
+          padding: 0;
+        }
+
+        .page {
+          width: 101mm;
+          margin: 0 auto;
+          display: flex;
+          justify-content: center;
+        }
+
+        table.sheet {
+          width: 101mm;
+          margin: 0 auto;
+          border-collapse: collapse;
+          border-spacing: 0;
+          table-layout: fixed;
+        }
+
+        table.sheet td {
+          width: 32mm;
+          padding: 0;
+          margin: 0;
+          vertical-align: top;
+          text-align: center;
         }
 
         .label {
-          border: 1px solid #000;
-          width: 48mm;
-          height: 30mm;
-          padding: 2mm;
+          
+          width: 32mm;
+          height: 22mm;
+          padding: 2.5px;
           display: flex;
           flex-direction: column;
           justify-content: space-between;
           align-items: center;
-          page-break-inside: avoid;
           overflow: hidden;
+          page-break-inside: avoid;
+          margin: 0;
         }
 
         .title {
-          font-size: 14px;
-          font-weight: bold;
-          text-align: center;
-          line-height: 1.1;
-          width: 100%;
-        }
-
-        .barcode {
-          width: 100%;
-          height: 12mm;
-          object-fit: contain;
-        }
-
-        .code {
-          font-size: 14px;
-          line-height: 1;
-          text-align: center;
-        }
-
-        .variant {
           font-size: 12px;
           font-weight: bold;
           text-align: center;
-          line-height: 1.1;
           width: 100%;
+          line-height: 1.1;
+          white-space: normal;
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          word-break: break-word;
+        }
+
+        .barcode {
+          display: block;
+          width: 70px;
+          height: 24px;
+          margin: 0;
+        }
+
+        .code {
+          font-size: 10px;
+          text-align: center;
+          width: 100%;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+
+        .variant {
+          font-size: 8px;
+          font-weight: bold;
+          text-align: center;
+          width: 100%;
+          line-height: 1.1;
+          max-height: 17.6px;
+          white-space: normal;
+          overflow: hidden;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
+          word-break: break-word;
         }
       </style>
     </head>
 
     <body>
-      <div class="sheet">
-        ${labelsHtml}
+      <div class="page">
+        <table class="sheet">
+          <tbody>
+            ${rows.join('')}
+          </tbody>
+        </table>
       </div>
     </body>
     </html>

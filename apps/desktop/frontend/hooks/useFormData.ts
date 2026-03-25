@@ -18,7 +18,7 @@ interface FormInputs {
 let defaultEndPoint = typeof window !== 'undefined' ? window.location.origin : '/';
 const pathname = typeof window !== 'undefined' ? window.location.pathname : '/';
 const search = typeof window !== 'undefined' ? window.location.search : '/';
-const user = typeof window !== 'undefined' ? localStorage.getItem("user") : null;
+//const user = typeof window !== 'undefined' ? localStorage.getItem("user") : null;
 
 interface RootState {
   data: {
@@ -102,15 +102,15 @@ const useFormData = (
 
   const getUserLocalStore = async () => {
     const userStr = localStorage.getItem('user');
-    if (typeof userStr === 'string') {
-      try {
-        const { token } = JSON.parse(userStr);
-        return token || false;
-      } catch {
-        return false;
-      }
+
+    if (!userStr) return false;
+
+    try {
+      const parsed = JSON.parse(userStr);
+      return parsed?.token || false;
+    } catch {
+      return false;
     }
-    return false;
   };
 
   /**
@@ -131,15 +131,23 @@ const useFormData = (
 
       if (typeof window === 'undefined') return;
 
-      const parsedUser = user ? JSON.parse(user) : null;
-      let token = parsedUser?.token;
+      let token: string | false | null = null;
+
+      
 
       const userSecondary = localStorage.getItem("user");
       if (!token && userSecondary) {
-        token = JSON.parse(userSecondary).token || null;
+        try {
+          const parsed = JSON.parse(userSecondary);
+          token = parsed?.token || null;
+        } catch {
+          token = null;
+        }
       }
 
-      token = await getUserLocalStore();
+      if (!token) {
+        token = await getUserLocalStore();
+      }
 
       const headers = new Headers({
         'Content-Type': 'application/json',
@@ -214,6 +222,8 @@ const useFormData = (
 
     } catch (error: any) {
       dispatch(handleCloseLoading());
+
+      console.log(error)
 
       if (shouldToast) {
         fireToast(
