@@ -297,9 +297,6 @@ export default function Page() {
           <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-6">
               <ProductionHeader productName={data?.product?.name} />
-              {
-                console.log(printing,printQuantity)
-              }
               <ProductionActions
                 value={printQuantity}
                 printing={printing}
