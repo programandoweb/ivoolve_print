@@ -4,12 +4,14 @@
   "private": true,
   "workspaces": [
     "apps/api",
-    "apps/desktop"
+    "apps/desktop",
+    "apps/desktop/frontend"
   ],
   "scripts": {
     "install:all": "npm install --workspaces",
     "dev:api": "npm run start:dev --workspace=api",
     "dev:desktop": "npm run dev --workspace=desktop",
+    "dev:frontend": "npm run dev --workspace=frontend",
     "start": "concurrently -k \"npm run dev:api\" \"npm run dev:desktop\""
   },
   "devDependencies": {

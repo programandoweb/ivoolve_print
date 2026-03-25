@@ -22,7 +22,7 @@ async function bootstrap() {
     }),
   )
 
-  const port = 3001
+  const port = 3031
   await app.listen(port)
 
   console.log(`✅ API NestJS ejecutándose en http://localhost:${port}/api`)

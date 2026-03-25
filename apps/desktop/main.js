@@ -13,12 +13,12 @@ function createWindow() {
     },
   })
 
-  win.loadURL('http://localhost:3000')
+  win.loadURL('http://localhost:3030')
 }
 
 ipcMain.handle('print-labels', async (_event, payload) => {
   try {
-    const response = await fetch('http://localhost:3001/api/print/labels', {
+    const response = await fetch('http://localhost:3031/api/print/labels', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
