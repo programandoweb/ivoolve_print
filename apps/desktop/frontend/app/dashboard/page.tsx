@@ -8,16 +8,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import {
-  FiSearch,
-  FiX,
-  FiPackage,
-  FiHash,
-  FiLayers,
-  FiTag,
-  FiBox,
-  FiPrinter,
-} from 'react-icons/fi'
+import { FiSearch } from 'react-icons/fi'
 import { io, type Socket } from 'socket.io-client'
 import useFormData from '@/hooks/useFormData'
 import useUserHook from '@/hooks/useUserHook'
@@ -27,6 +18,14 @@ import ProductSummary from './ProductSummary'
 import ProductionStats from './ProductionStats'
 import ProductionHeader from './ProductionHeader'
 import ProductionActions from './ProductionActions'
+
+declare global {
+  interface Window {
+    api?: {
+      print: (data: any) => Promise<any>
+    }
+  }
+}
 
 export default function Page() {
   const formData = useFormData(false, false, false, true)
@@ -82,7 +81,6 @@ export default function Page() {
 
   useEffect(() => {
     if (!user?.token || !process.env.NEXT_PUBLIC_SOCKET_URL_PRINT) return
-    console.log('conexión', process.env.NEXT_PUBLIC_SOCKET_URL_PRINT)
 
     const socket = io(`${process.env.NEXT_PUBLIC_SOCKET_URL_PRINT}/printer`, {
       transports: ['websocket'],
@@ -96,7 +94,7 @@ export default function Page() {
     socketRef.current = socket
 
     const handleConnect = () => {
-      console.log('Socket conectado:', socket.id)
+      console.log('RECEPTOR conectado:', socket.id)
     }
 
     const handleConnectError = (error: Error) => {
@@ -117,18 +115,18 @@ export default function Page() {
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
-            message: `Etiquetas del lote ${data?.batch_code || ''} enviadas a impresión remota`,
+            message: 'Trabajo recibido por el servicio de impresión',
             type: 'success',
           },
         })
       )
     }
 
-    const handlePrinterJob = async (data: any) => {
-      const batchCode = data?.payload?.batch_code
-      const abbreviation = data?.payload?.abbreviation
+    const handlePrinterJob = async (socketData: any) => {
+      const batchCode = socketData?.payload?.batch_code
+      const abbreviation = socketData?.payload?.abbreviation
 
-      console.log('printer:job => eso es', batchCode, abbreviation)
+      console.log('printer:job =>', batchCode, abbreviation)
 
       if (!batchCode) return
 
@@ -137,21 +135,12 @@ export default function Page() {
       await fetchProductionOrder(String(batchCode), { resetPrintQuantity: false })
     }
 
-    socket.on('connect', () => {
-      console.log('RECEPTOR conectado:', socket.id)
-    })
-
-    socket.onAny((event, ...args) => {
-      console.log('RECEPTOR onAny =>', event, args)
-    })
-
-    socket.on('printer:job', handlePrinterJob)
-
     socket.on('connect', handleConnect)
     socket.on('connect_error', handleConnectError)
     socket.on('printer:connected', handlePrinterConnected)
     socket.on('printer:response', handlePrinterResponse)
     socket.on('printer:ack', handlePrinterAck)
+    socket.on('printer:job', handlePrinterJob)
 
     return () => {
       socket.off('connect', handleConnect)
@@ -195,71 +184,95 @@ export default function Page() {
   }
 
   const handlePrint = async () => {
-    try {
-      if (!data?.id || !print?.length) return
+  try {
+    if (!data?.id || !print?.length) return
 
-      if (!printQuantity.trim()) {
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: {
-              message: 'Debes ingresar una abreviatura válida',
-              type: 'error',
-            },
-          })
-        )
-        return
-      }
+    const abbreviation = printQuantity.trim()
 
-      if (!socketRef.current?.connected) {
-        window.dispatchEvent(
-          new CustomEvent('toast', {
-            detail: {
-              message: 'El socket de impresión no está conectado',
-              type: 'error',
-            },
-          })
-        )
-        return
-      }
-
-      setPrinting(true)
-
-      const payload = {
-        deviceId: 'web-client',
-        printerName: 'Digital POS DG-2406T PRO',
-        type: 'label.print',
-        template: {
-          name: 'product-label',
-          size: '32x22',
-        },
-        dataset: print,
-        abbreviation: printQuantity.trim(),
-        atch_code:
-          typeof data?.batch_code === 'string'
-            ? data.batch_code.replace('LOT-', '')
-            : data?.batch_code,
-      }
-
-      console.log('Payload etiquetas:', payload)
-
-      socketRef.current.emit('printer:listen', payload)
-    } catch (error) {
-      console.error(error)
-
+    if (!abbreviation) {
       window.dispatchEvent(
         new CustomEvent('toast', {
           detail: {
-            message: 'Error enviando la orden a impresión',
+            message: 'Debes ingresar una abreviatura válida',
             type: 'error',
           },
         })
       )
-    } finally {
-      setPrinting(false)
+      return
     }
-  }
 
-  console.log(printing,printQuantity)
+    setPrinting(true)
+
+    console.log(abbreviation,"abbreviation----")
+
+    const payload = {
+      print: print.map((item: any) => ({
+        title: item.title || data?.product?.name || 'Sin nombre',
+        code: `${item.code || ''} - ${abbreviation}`,
+        variant_name: item.variant_name || item.variant || '-',
+        quantity: Number(item.quantity || 0),
+        abbreviation:abbreviation
+      })),
+      abbreviation,
+      batch_code:
+        typeof data?.batch_code === 'string'
+          ? data.batch_code.replace('LOT-', '')
+          : data?.batch_code,
+    }
+
+    console.log('Payload etiquetas:', payload)
+
+    if (typeof window === 'undefined' || !window.api?.print) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: 'El puente de impresión no está disponible',
+            type: 'error',
+          },
+        })
+      )
+      return
+    }
+
+    const result = await window.api.print(payload)
+
+    console.log('Resultado impresión:', result)
+
+    if (!result?.ok) {
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: result?.message || 'Error enviando a impresión',
+            type: 'error',
+          },
+        })
+      )
+      return
+    }
+
+    window.dispatchEvent(
+      new CustomEvent('toast', {
+        detail: {
+          message: `Etiquetas del lote ${data?.batch_code} enviadas a impresión`,
+          type: 'success',
+        },
+      })
+    )
+  } catch (error) {
+    console.error(error)
+
+    window.dispatchEvent(
+      new CustomEvent('toast', {
+        detail: {
+          message: 'Error enviando la orden a impresión',
+          type: 'error',
+        },
+      })
+    )
+  } finally {
+    setPrinting(false)
+  }
+}
 
   return (
     <div className="px-4 py-10">

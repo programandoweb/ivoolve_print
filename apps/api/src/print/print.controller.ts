@@ -7,6 +7,13 @@ export class PrintController {
   @Post('labels')
   async generateLabels(@Body() body: any, @Res() res: Response) {
     const labels = Array.isArray(body?.print) ? body.print : []
+
+    console.log('labels recibidos', labels)
+    console.log(
+      'total a imprimir',
+      labels.reduce((acc, item) => acc + Number(item.quantity || 0), 0)
+    )
+
     const html = await this.buildHtml(labels)
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8')
@@ -48,30 +55,39 @@ export class PrintController {
 
       if (quantity <= 0) return []
 
-      return Array.from({ length: quantity }, () => ({
-        title: label?.title || '',
-        code: label?.code + " " + label?.code || '',
-        variant_name: label?.variant_name || label?.variant || '',
-      }))
+      return Array.from({ length: quantity }, () => {
+        const printedCode = String(label?.code || '').trim()
+        const barcodeText = printedCode.includes(' - ')
+          ? printedCode.split(' - ')[0].trim()
+          : printedCode
+
+        return {
+          title: label?.title || '',
+          code: printedCode,
+          barcodeText,
+          variant_name: label?.variant_name || label?.variant || '',
+        }
+      })
     })
 
     const barcodeCache = new Map<string, string>()
 
     const labelsHtmlArray = await Promise.all(
-      expandedLabels.map(async (label, key) => {
+      expandedLabels.map(async (label) => {
         const code = String(label.code || '')
-        let barcode = barcodeCache.get(code)
+        const barcodeText = String(label.barcodeText || '')
+        let barcode = barcodeCache.get(barcodeText)
 
         if (!barcode) {
-          barcode = await this.generateBarcodeBase64(code)
-          barcodeCache.set(code, barcode)
+          barcode = await this.generateBarcodeBase64(barcodeText)
+          barcodeCache.set(barcodeText, barcode)
         }
 
         return `
           <div class="label">
             <div class="title">${this.escapeHtml(label.title)}</div>
             <img src="${barcode}" class="barcode" />
-            <div class="code">${this.escapeHtml(code)} - TKA</div>
+            <div class="code">${this.escapeHtml(code)}</div>
             <div class="variant">${this.escapeHtml(label.variant_name)}</div>
           </div>
         `
@@ -151,7 +167,6 @@ export class PrintController {
         }
 
         .label {
-          
           width: 32mm;
           height: 22mm;
           padding: 2.5px;
@@ -159,7 +174,6 @@ export class PrintController {
           flex-direction: column;
           justify-content: space-between;
           align-items: center;
-          overflow: hidden;
           page-break-inside: avoid;
           margin: 0;
         }
@@ -180,9 +194,10 @@ export class PrintController {
 
         .barcode {
           display: block;
-          width: 70px;
-          height: 24px;
+          width: 86px;
+          height: 22px;
           margin: 0;
+          image-rendering: pixelated;
         }
 
         .code {
@@ -228,9 +243,11 @@ export class PrintController {
     const png = await bwipjs.toBuffer({
       bcid: 'code128',
       text: String(code),
-      scale: 2,
-      height: 10,
+      scale: 3,
+      height: 12,
       includetext: false,
+      paddingwidth: 0,
+      paddingheight: 0,
     })
 
     return `data:image/png;base64,${png.toString('base64')}`
