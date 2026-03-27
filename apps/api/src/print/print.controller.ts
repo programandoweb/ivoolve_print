@@ -95,6 +95,7 @@ export class PrintController {
     )
 
     const rows: string[] = []
+    
 
     for (let i = 0; i < labelsHtmlArray.length; i += 3) {
       const col1 = labelsHtmlArray[i] || ''
