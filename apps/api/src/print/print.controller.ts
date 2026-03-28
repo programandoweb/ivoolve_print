@@ -211,7 +211,7 @@ export class PrintController {
         }
 
         .variant {
-          font-size: 8px;
+          font-size: 12px;
           font-weight: bold;
           text-align: center;
           width: 100%;

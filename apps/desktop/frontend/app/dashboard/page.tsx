@@ -185,6 +185,7 @@ export default function Page() {
 
   const handlePrint = async () => {
   try {
+    
     if (!data?.id || !print?.length) return
 
     const abbreviation = printQuantity.trim()
