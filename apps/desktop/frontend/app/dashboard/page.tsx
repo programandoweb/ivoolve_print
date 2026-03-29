@@ -214,6 +214,7 @@ export default function Page() {
     setPrint([])
     setSearch('')
     setPrintQuantity('')
+    setPrinting(false)
     printObjectRef.current = {
       print: [],
       order: null,
