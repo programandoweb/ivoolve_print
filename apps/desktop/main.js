@@ -12,7 +12,7 @@ function createWindow() {
       nodeIntegration: false,
     },
   })
-
+  //win.loadURL('http://localhost:3030')
   win.loadURL('https://ivoolve-print-frontend.vercel.app')
 }
 

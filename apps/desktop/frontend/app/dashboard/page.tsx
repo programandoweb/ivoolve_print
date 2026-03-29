@@ -18,6 +18,11 @@ import ProductSummary from './ProductSummary'
 import ProductionStats from './ProductionStats'
 import ProductionHeader from './ProductionHeader'
 import ProductionActions from './ProductionActions'
+import SearchMethodTabs, {
+  OPTIONS,
+  type SearchMethodOption,
+  type SearchMethodType,
+} from './SearchMethodTabs'
 
 declare global {
   interface Window {
@@ -27,10 +32,21 @@ declare global {
   }
 }
 
+type PrintObjectType = {
+  print: any[]
+  order: any | null
+  abbreviation?: string
+}
+
 export default function Page() {
   const formData = useFormData(false, false, false, true)
   const { user } = useUserHook()
   const socketRef = useRef<Socket | null>(null)
+  const printObjectRef = useRef<PrintObjectType>({
+    print: [],
+    order: null,
+    abbreviation: '',
+  })
 
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
@@ -38,6 +54,11 @@ export default function Page() {
   const [data, setData] = useState<any>(null)
   const [print, setPrint] = useState<any[]>([])
   const [printQuantity, setPrintQuantity] = useState('')
+  const [searchMethod, setSearchMethod] = useState<SearchMethodType>('batch_code')
+  const [searchMethodConfig, setSearchMethodConfig] = useState<SearchMethodOption>(
+    OPTIONS[0]
+  )
+  const [drawerOpen, setDrawerOpen] = useState(false)
 
   const fetchProductionOrder = async (
     searchValue: string,
@@ -55,6 +76,7 @@ export default function Page() {
         'post',
         {
           search: searchValue.trim(),
+          method: searchMethod,
         }
       )
 
@@ -124,15 +146,30 @@ export default function Page() {
 
     const handlePrinterJob = async (socketData: any) => {
       const batchCode = socketData?.payload?.batch_code
-      const abbreviation = socketData?.payload?.abbreviation
+      const abbreviation = String(socketData?.payload?.abbreviation || '').trim()
 
       console.log('printer:job =>', batchCode, abbreviation)
 
       if (!batchCode) return
 
       setSearch(String(batchCode))
-      setPrintQuantity(abbreviation || '')
-      await fetchProductionOrder(String(batchCode), { resetPrintQuantity: false })
+      setPrintQuantity(abbreviation)
+
+      const response = await fetchProductionOrder(String(batchCode), {
+        resetPrintQuantity: false,
+      })
+
+      printObjectRef.current = {
+        print: Array.isArray(response?.print) ? response.print : [],
+        order: response?.order || null,
+        abbreviation,
+      }
+
+      await handlePrint({
+        order: response?.order || null,
+        print: Array.isArray(response?.print) ? response.print : [],
+        abbreviation,
+      })
     }
 
     socket.on('connect', handleConnect)
@@ -177,103 +214,149 @@ export default function Page() {
     setPrint([])
     setSearch('')
     setPrintQuantity('')
+    printObjectRef.current = {
+      print: [],
+      order: null,
+      abbreviation: '',
+    }
   }
 
   const handlePrintQuantityChange = (value: string) => {
     setPrintQuantity(value)
   }
 
-  const handlePrint = async () => {
-  try {
-    
-    if (!data?.id || !print?.length) return
-
-    const abbreviation = printQuantity.trim()
-
-    if (!abbreviation) {
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: {
-            message: 'Debes ingresar una abreviatura válida',
-            type: 'error',
-          },
-        })
-      )
-      return
-    }
-
-    setPrinting(true)
-
-    console.log(abbreviation,"abbreviation----")
-
-    const payload = {
-      print: print.map((item: any) => ({
-        title: item.title || data?.product?.name || 'Sin nombre',
-        code: `${item.code || ''} - ${abbreviation}`,
-        variant_name: item.variant_name || item.variant || '-',
-        quantity: Number(item.quantity || 0),
-        abbreviation:abbreviation
-      })),
-      abbreviation,
-      batch_code:
-        typeof data?.batch_code === 'string'
-          ? data.batch_code.replace('LOT-', '')
-          : data?.batch_code,
-    }
-
-    console.log('Payload etiquetas:', payload)
-
-    if (typeof window === 'undefined' || !window.api?.print) {
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: {
-            message: 'El puente de impresión no está disponible',
-            type: 'error',
-          },
-        })
-      )
-      return
-    }
-
-    const result = await window.api.print(payload)
-
-    console.log('Resultado impresión:', result)
-
-    if (!result?.ok) {
-      window.dispatchEvent(
-        new CustomEvent('toast', {
-          detail: {
-            message: result?.message || 'Error enviando a impresión',
-            type: 'error',
-          },
-        })
-      )
-      return
-    }
-
-    window.dispatchEvent(
-      new CustomEvent('toast', {
-        detail: {
-          message: `Etiquetas del lote ${data?.batch_code} enviadas a impresión`,
-          type: 'success',
-        },
-      })
-    )
-  } catch (error) {
-    console.error(error)
-
-    window.dispatchEvent(
-      new CustomEvent('toast', {
-        detail: {
-          message: 'Error enviando la orden a impresión',
-          type: 'error',
-        },
-      })
-    )
-  } finally {
-    setPrinting(false)
+  const handleSearchMethodChange = (
+    value: SearchMethodType,
+    option: SearchMethodOption
+  ) => {
+    setSearchMethod(value)
+    setSearchMethodConfig(option)
+    setDrawerOpen(Boolean(option.drawer))
   }
-}
+
+  const handlePrint = async (source?: Partial<PrintObjectType>) => {
+    try {
+      const fallbackData = source?.order || printObjectRef.current.order || data
+      const fallbackPrint =
+        (Array.isArray(source?.print) && source?.print.length
+          ? source.print
+          : Array.isArray(printObjectRef.current.print) &&
+              printObjectRef.current.print.length
+            ? printObjectRef.current.print
+            : print) || []
+
+      const abbreviation = String(
+        source?.abbreviation ??
+          printObjectRef.current.abbreviation ??
+          printQuantity ??
+          ''
+      ).trim()
+
+      console.log('Esta acción de impresión --->', {
+        source,
+        ref: printObjectRef.current,
+        state: { print, dataId: data?.id },
+        resolved: {
+          dataId: fallbackData?.id,
+          printLength: fallbackPrint?.length,
+          abbreviation,
+        },
+      })
+
+      if (!fallbackData?.id || !fallbackPrint?.length) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: 'No hay datos válidos para imprimir',
+              type: 'error',
+            },
+          })
+        )
+        return
+      }
+
+      if (!abbreviation) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: 'Debes ingresar una abreviatura válida',
+              type: 'error',
+            },
+          })
+        )
+        return
+      }
+
+      setPrinting(true)
+
+      const payload = {
+        print: fallbackPrint.map((item: any) => ({
+          title: item.title || fallbackData?.product?.name || 'Sin nombre',
+          code: `${item.code || ''} - ${abbreviation}`,
+          variant_name: item.variant_name || item.variant || '-',
+          quantity: Number(item.quantity || 0),
+          abbreviation,
+        })),
+        abbreviation,
+        batch_code:
+          typeof fallbackData?.batch_code === 'string'
+            ? fallbackData.batch_code.replace('LOT-', '')
+            : fallbackData?.batch_code,
+      }
+
+      console.log('Payload etiquetas:', payload)
+
+      if (typeof window === 'undefined' || !window.api?.print) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: 'El puente de impresión no está disponible',
+              type: 'error',
+            },
+          })
+        )
+        return
+      }
+
+      const result = await window.api.print(payload)
+
+      console.log('Resultado impresión:', result)
+
+      if (!result?.ok) {
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: result?.message || 'Error enviando a impresión',
+              type: 'error',
+            },
+          })
+        )
+        return
+      }
+
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: `Etiquetas del lote ${fallbackData?.batch_code} enviadas a impresión`,
+            type: 'success',
+          },
+        })
+      )
+    } catch (error) {
+      console.error(error)
+
+      window.dispatchEvent(
+        new CustomEvent('toast', {
+          detail: {
+            message: 'Error enviando la orden a impresión',
+            type: 'error',
+          },
+        })
+      )
+    } finally {
+      setPrinting(false)
+    }
+  }
 
   return (
     <div className="px-4 py-10">
@@ -286,7 +369,7 @@ export default function Page() {
       </h1>
 
       {!data && (
-        <form onSubmit={handleSubmit} className="mx-auto mb-8 flex w-full max-w-xl">
+        <form onSubmit={handleSubmit} className="mx-auto mb-8 flex w-full max-w-xl flex-col">
           <div className="flex w-full items-center rounded-2xl border border-slate-300 bg-white px-4 shadow-sm transition focus-within:border-pink-500 focus-within:ring-2 focus-within:ring-pink-200">
             <FiSearch className="text-slate-400" size={20} />
             <input
@@ -297,6 +380,11 @@ export default function Page() {
               className="w-full bg-transparent px-3 py-4 text-sm text-slate-900 outline-none placeholder:text-slate-400"
             />
           </div>
+
+          <SearchMethodTabs
+            value={searchMethod}
+            onChange={handleSearchMethodChange}
+          />
         </form>
       )}
 
@@ -304,6 +392,29 @@ export default function Page() {
         <p className="mb-6 text-center text-sm text-slate-500">
           Consultando órdenes...
         </p>
+      )}
+
+      {drawerOpen && !data && (
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
+          <div className="h-full w-full max-w-md bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-800">
+                {searchMethodConfig.label}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setDrawerOpen(false)}
+                className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Cerrar
+              </button>
+            </div>
+
+            <div className="text-sm text-slate-600">
+              Contenido dinámico para <b>{searchMethodConfig.label}</b>
+            </div>
+          </div>
+        </div>
       )}
 
       {data && (
