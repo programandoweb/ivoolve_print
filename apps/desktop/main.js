@@ -13,7 +13,7 @@ function createWindow() {
     },
   })
 
-  win.loadURL('http://localhost:3030')
+  win.loadURL('https://ivoolve-print-frontend.vercel.app')
 }
 
 ipcMain.handle('print-labels', async (_event, payload) => {
