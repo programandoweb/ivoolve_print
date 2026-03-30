@@ -2,12 +2,13 @@
 
 import { FC } from 'react'
 
-export type SearchMethodType = 'batch_code' | 'tag' | 'letterhead'
+export type SearchMethodType = 'batch_code' | 'tag' | 'letterhead' | ""
 
 export type SearchMethodOption = {
   label: string
   value: SearchMethodType
   drawer?: boolean
+  drawerResult?:boolean
 }
 
 interface Props {
@@ -17,7 +18,7 @@ interface Props {
 
 export const OPTIONS: SearchMethodOption[] = [
   { label: 'Requisición', value: 'batch_code' },
-  { label: 'Etiqueta', value: 'tag' },
+  { label: 'Etiqueta', value: 'tag', drawerResult: true },
   { label: 'Membretes', value: 'letterhead', drawer: true },
 ]
 

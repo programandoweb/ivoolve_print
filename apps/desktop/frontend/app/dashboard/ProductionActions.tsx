@@ -29,7 +29,7 @@ export default function ProductionActions({
 
       <button
         type="button"
-        onClick={onPrint}
+        onClick={() => onPrint()}
         disabled={printing || !value.trim()}
         className="inline-flex items-center justify-center gap-2 rounded-xl bg-pink-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-70"
       >

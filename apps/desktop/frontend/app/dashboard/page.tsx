@@ -36,6 +36,7 @@ type PrintObjectType = {
   print: any[]
   order: any | null
   abbreviation?: string
+  payload?: any
 }
 
 export default function Page() {
@@ -51,14 +52,16 @@ export default function Page() {
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(false)
   const [printing, setPrinting] = useState(false)
+  const [tag, setTag] = useState<any>(null)
   const [data, setData] = useState<any>(null)
   const [print, setPrint] = useState<any[]>([])
   const [printQuantity, setPrintQuantity] = useState('')
-  const [searchMethod, setSearchMethod] = useState<SearchMethodType>('batch_code')
+  const [drawerPrintQuantity, setDrawerPrintQuantity] = useState('')
+  const [searchMethod, setSearchMethod] = useState<SearchMethodType>('')
   const [searchMethodConfig, setSearchMethodConfig] = useState<SearchMethodOption>(
     OPTIONS[0]
   )
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState<any>(null)
 
   const fetchProductionOrder = async (
     searchValue: string,
@@ -86,6 +89,10 @@ export default function Page() {
 
       if (response?.print) {
         setPrint(response.print)
+      }
+
+      if (response?.tag) {
+        setTag(response.tag)
       }
 
       if (options?.resetPrintQuantity !== false) {
@@ -204,6 +211,90 @@ export default function Page() {
     return data?.items?.length || 0
   }, [data])
 
+  const resolvedTag = useMemo(() => {
+    if (Array.isArray(tag)) return tag[0] || null
+    return tag || null
+  }, [tag])
+
+  const drawerPrintQuantityIsValid = useMemo(() => {
+    return Number(drawerPrintQuantity) > 0
+  }, [drawerPrintQuantity])
+
+  const normalizeTagPrintPayload = () => {
+    if (!resolvedTag || !drawerPrintQuantityIsValid) return null
+
+    const quantity = Number(drawerPrintQuantity)
+
+    const rawCode =
+      [
+        resolvedTag?.code,
+        resolvedTag?.tag_code,
+        resolvedTag?.barcode,
+        resolvedTag?.sku,
+        resolvedTag?.reference,
+        resolvedTag?.serial,
+      ]
+        .map((item) => String(item ?? '').trim())
+        .find(Boolean) || ''
+
+    const title =
+      [
+        resolvedTag?.title,
+        resolvedTag?.name,
+        resolvedTag?.product_name,
+        resolvedTag?.product?.name,
+        resolvedTag?.item?.name,
+      ]
+        .map((item) => String(item ?? '').trim())
+        .find(Boolean) || 'Sin nombre'
+
+    const variantName =
+      [
+        resolvedTag?.variant_name,
+        resolvedTag?.variant,
+        resolvedTag?.variant?.name,
+        resolvedTag?.presentation,
+      ]
+        .map((item) => String(item ?? '').trim())
+        .find(Boolean) || '-'
+
+    const abbreviation =
+      [
+        resolvedTag?.abbreviation,
+        resolvedTag?.short_name,
+        resolvedTag?.short_code,
+      ]
+        .map((item) => String(item ?? '').trim())
+        .find(Boolean) || ''
+
+    const batchCodeRaw =
+      resolvedTag?.batch_code ||
+      resolvedTag?.batch?.code ||
+      resolvedTag?.lot ||
+      resolvedTag?.lot_code ||
+      rawCode
+
+    return {
+      print: [
+        {
+          title,
+          code:
+            abbreviation && rawCode
+              ? `${rawCode} - ${abbreviation}`
+              : rawCode || abbreviation || title,
+          variant_name: variantName,
+          quantity,
+          abbreviation,
+        },
+      ],
+      abbreviation,
+      batch_code:
+        typeof batchCodeRaw === 'string'
+          ? batchCodeRaw.replace('LOT-', '')
+          : batchCodeRaw,
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     await fetchProductionOrder(search, { resetPrintQuantity: true })
@@ -214,16 +305,22 @@ export default function Page() {
     setPrint([])
     setSearch('')
     setPrintQuantity('')
+    setDrawerPrintQuantity('')
     setPrinting(false)
     printObjectRef.current = {
       print: [],
       order: null,
       abbreviation: '',
     }
+    setSearchMethod('')
   }
 
   const handlePrintQuantityChange = (value: string) => {
     setPrintQuantity(value)
+  }
+
+  const handleDrawerPrintQuantityChange = (value: string) => {
+    setDrawerPrintQuantity(value.replace(/\D/g, ''))
   }
 
   const handleSearchMethodChange = (
@@ -232,11 +329,78 @@ export default function Page() {
   ) => {
     setSearchMethod(value)
     setSearchMethodConfig(option)
-    setDrawerOpen(Boolean(option.drawer))
+    setDrawerOpen({
+      open: Boolean(option.drawer),
+      render: Boolean(option.drawer) ? 'drawer' : 'drawer2',
+    })
   }
 
   const handlePrint = async (source?: Partial<PrintObjectType>) => {
     try {
+      console.log('------>>', source)
+
+      if (source?.payload) {
+        const directPayload = source.payload
+
+        if (
+          !directPayload ||
+          !Array.isArray(directPayload?.print) ||
+          !directPayload.print.length
+        ) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: {
+                message: 'No hay datos válidos para imprimir',
+                type: 'error',
+              },
+            })
+          )
+          return
+        }
+
+        setPrinting(true)
+
+        if (typeof window === 'undefined' || !window.api?.print) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: {
+                message: 'El puente de impresión no está disponible',
+                type: 'error',
+              },
+            })
+          )
+          return
+        }
+
+        const result = await window.api.print(directPayload)
+
+        console.log('Resultado impresión:', result)
+
+        if (!result?.ok) {
+          window.dispatchEvent(
+            new CustomEvent('toast', {
+              detail: {
+                message: result?.message || 'Error enviando a impresión',
+                type: 'error',
+              },
+            })
+          )
+          return
+        }
+
+        window.dispatchEvent(
+          new CustomEvent('toast', {
+            detail: {
+              message: directPayload?.batch_code
+                ? `Etiquetas del lote ${directPayload.batch_code} enviadas a impresión`
+                : 'Etiqueta enviada a impresión',
+              type: 'success',
+            },
+          })
+        )
+        return
+      }
+
       const fallbackData = source?.order || printObjectRef.current.order || data
       const fallbackPrint =
         (Array.isArray(source?.print) && source?.print.length
@@ -246,12 +410,13 @@ export default function Page() {
             ? printObjectRef.current.print
             : print) || []
 
-      const abbreviation = String(
-        source?.abbreviation ??
-          printObjectRef.current.abbreviation ??
-          printQuantity ??
-          ''
-      ).trim()
+      const abbreviation = [
+        source?.abbreviation,
+        printQuantity,
+        printObjectRef.current.abbreviation,
+      ]
+        .map((item) => String(item ?? '').trim())
+        .find(Boolean) || ''
 
       console.log('Esta acción de impresión --->', {
         source,
@@ -359,6 +524,8 @@ export default function Page() {
     }
   }
 
+  console.log(tag, drawerOpen)
+
   return (
     <div className="px-4 py-10">
       <div className="mx-auto mb-6 flex w-full max-w-[180px] items-center justify-center">
@@ -371,16 +538,18 @@ export default function Page() {
 
       {!data && (
         <form onSubmit={handleSubmit} className="mx-auto mb-8 flex w-full max-w-xl flex-col">
-          <div className="flex w-full items-center rounded-2xl border border-slate-300 bg-white px-4 shadow-sm transition focus-within:border-pink-500 focus-within:ring-2 focus-within:ring-pink-200">
-            <FiSearch className="text-slate-400" size={20} />
-            <input
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Escribe y presiona Enter para buscar"
-              className="w-full bg-transparent px-3 py-4 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-            />
-          </div>
+          {searchMethod !== '' && (
+            <div className="flex w-full items-center rounded-2xl border border-slate-300 bg-white px-4 shadow-sm transition focus-within:border-pink-500 focus-within:ring-2 focus-within:ring-pink-200">
+              <FiSearch className="text-slate-400" size={20} />
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Escribe y presiona Enter para buscar"
+                className="w-full bg-transparent px-3 py-4 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+              />
+            </div>
+          )}
 
           <SearchMethodTabs
             value={searchMethod}
@@ -395,7 +564,10 @@ export default function Page() {
         </p>
       )}
 
-      {drawerOpen && !data && (
+      {(
+        (drawerOpen && drawerOpen?.render === 'drawer' && !data) ||
+        (drawerOpen && drawerOpen?.render === 'drawer2' && tag)
+      ) && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
           <div className="h-full w-full max-w-md bg-white p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
@@ -404,16 +576,78 @@ export default function Page() {
               </h2>
               <button
                 type="button"
-                onClick={() => setDrawerOpen(false)}
+                onClick={() => {
+                  setDrawerOpen(false)
+                  setTag(null)
+                  setSearch('')
+                  setSearchMethod('')
+                  setDrawerPrintQuantity('')
+                }}
                 className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
               >
                 Cerrar
               </button>
             </div>
 
-            <div className="text-sm text-slate-600">
-              Contenido dinámico para <b>{searchMethodConfig.label}</b>
-            </div>
+            {drawerOpen?.render === 'drawer2' && tag ? (
+              <div className="space-y-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Resultado encontrado
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-slate-800">
+                    {resolvedTag?.title ||
+                      resolvedTag?.name ||
+                      resolvedTag?.product_name ||
+                      resolvedTag?.product?.name ||
+                      'Tag encontrado'}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Código:{' '}
+                    {resolvedTag?.code ||
+                      resolvedTag?.tag_code ||
+                      resolvedTag?.barcode ||
+                      resolvedTag?.sku ||
+                      resolvedTag?.reference ||
+                      '-'}
+                  </p>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-slate-700">
+                    Cantidad a imprimir
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={drawerPrintQuantity}
+                    onChange={(e) =>
+                      handleDrawerPrintQuantityChange(e.target.value)
+                    }
+                    placeholder="Ej: 10"
+                    className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-pink-500 focus:ring-2 focus:ring-pink-200"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  disabled={!drawerPrintQuantityIsValid || printing}
+                  onClick={() => {
+                    const payload = normalizeTagPrintPayload()
+                    if (!payload) return
+                    handlePrint({ payload })
+                  }}
+                  className="w-full rounded-2xl bg-pink-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-pink-600 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {printing ? 'Imprimiendo...' : 'Imprimir'}
+                </button>
+              </div>
+            ) : (
+              <div className="text-sm text-slate-600">
+                Contenido dinámico para <b>{searchMethodConfig.label}</b>
+              </div>
+            )}
           </div>
         </div>
       )}
