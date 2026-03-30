@@ -225,6 +225,8 @@ export default function Page() {
 
     const quantity = Number(drawerPrintQuantity)
 
+    //return console.log(resolvedTag?.product?.name)
+
     const rawCode =
       [
         resolvedTag?.code,
@@ -239,6 +241,7 @@ export default function Page() {
 
     const title =
       [
+        resolvedTag?.product?.name,
         resolvedTag?.title,
         resolvedTag?.name,
         resolvedTag?.product_name,
