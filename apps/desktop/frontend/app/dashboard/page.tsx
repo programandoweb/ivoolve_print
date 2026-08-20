@@ -18,6 +18,8 @@ import ProductSummary from './ProductSummary'
 import ProductionStats from './ProductionStats'
 import ProductionHeader from './ProductionHeader'
 import ProductionActions from './ProductionActions'
+import RequisitionAutocomplete from './RequisitionAutocomplete'
+import useRequisitionCache from '@/hooks/useRequisitionCache'
 import SearchMethodTabs, {
   OPTIONS,
   type SearchMethodOption,
@@ -62,6 +64,18 @@ export default function Page() {
     OPTIONS[0]
   )
   const [drawerOpen, setDrawerOpen] = useState<any>(null)
+
+  const requisitionCacheUserKey = user?.id || user?.email || user?.name || null
+  const {
+    snapshot: requisitionSnapshot,
+    autocompleteItems: requisitionAutocompleteItems,
+    syncing: requisitionCacheSyncing,
+    sync: syncRequisitionCache,
+  } = useRequisitionCache({
+    backend: formData.backend,
+    token: user?.token,
+    userKey: requisitionCacheUserKey,
+  })
 
   const fetchProductionOrder = async (
     searchValue: string,
@@ -303,6 +317,11 @@ export default function Page() {
     await fetchProductionOrder(search, { resetPrintQuantity: true })
   }
 
+  const handleRequisitionSelect = async (batchCode: string) => {
+    setSearch(batchCode)
+    await fetchProductionOrder(batchCode, { resetPrintQuantity: true })
+  }
+
   const handleReset = () => {
     setData(null)
     setPrint([])
@@ -542,16 +561,28 @@ export default function Page() {
       {!data && (
         <form onSubmit={handleSubmit} className="mx-auto mb-8 flex w-full max-w-xl flex-col">
           {searchMethod !== '' && (
-            <div className="flex w-full items-center rounded-2xl border border-slate-300 bg-white px-4 shadow-sm transition focus-within:border-pink-500 focus-within:ring-2 focus-within:ring-pink-200">
-              <FiSearch className="text-slate-400" size={20} />
-              <input
-                type="text"
+            searchMethod === 'batch_code' ? (
+              <RequisitionAutocomplete
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Escribe y presiona Enter para buscar"
-                className="w-full bg-transparent px-3 py-4 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                items={requisitionAutocompleteItems}
+                syncing={requisitionCacheSyncing}
+                lastSync={requisitionSnapshot?.generated_at || null}
+                onChange={setSearch}
+                onSelect={(item) => void handleRequisitionSelect(item.batchCode)}
+                onRefresh={() => void syncRequisitionCache(true)}
               />
-            </div>
+            ) : (
+              <div className="flex w-full items-center rounded-2xl border border-slate-300 bg-white px-4 shadow-sm transition focus-within:border-pink-500 focus-within:ring-2 focus-within:ring-pink-200">
+                <FiSearch className="text-slate-400" size={20} />
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Escribe y presiona Enter para buscar"
+                  className="w-full bg-transparent px-3 py-4 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                />
+              </div>
+            )
           )}
 
           <SearchMethodTabs
