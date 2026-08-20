@@ -43,6 +43,25 @@ export default function useRequisitionCache({ backend, token, userKey }: Options
       setLastError(null)
 
       try {
+        // 1) Ejecuta primero la rutina masiva existente de códigos de barras.
+        // Se dispara en inicio, polling, reconexión y actualización manual porque
+        // todos esos flujos reutilizan esta misma función sync().
+        const barcodeResponse = await fetch(`${backend}/generated_barcode`, {
+          method: 'GET',
+          headers: {
+            Accept: 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          cache: 'no-store',
+        })
+
+        if (!barcodeResponse.ok) {
+          throw new Error(
+            `No fue posible ejecutar la generación masiva de códigos (HTTP ${barcodeResponse.status})`
+          )
+        }
+
+        // 2) Una vez terminada la generación masiva, refresca el snapshot local.
         const response = await fetch(
           `${backend}/dashboard/production-order/requisition-snapshot`,
           {
