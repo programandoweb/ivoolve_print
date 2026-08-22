@@ -116,12 +116,7 @@ export function flattenRequisitionOrders(
   const seen = new Set<string>()
 
   for (const order of orders) {
-    const codes = [
-      order.batch_code,
-      ...(Array.isArray(order.renders)
-        ? order.renders.map((render) => render?.batch_code)
-        : []),
-    ]
+    const codes = [order.batch_code]
       .map((code) => String(code || '').trim())
       .filter(Boolean)
 
