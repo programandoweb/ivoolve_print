@@ -1,3 +1,63 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Impresoras BETA</title><link rel="stylesheet" href="style.css"></head>
-<body><header><h1>Impresoras BETA</h1><label><input type="checkbox" id="enabled"> Habilitar perfiles BETA en esta estación</label><p>Configura las impresoras de esta estación y elige si deseas imprimir etiquetas con o sin diálogo Windows.</p></header><p id="message" role="status"></p><main id="panel" hidden><h2>Modo de impresión de etiquetas</h2><label><input type="checkbox" id="silent"> Imprimir sin cuadro de diálogo</label><p><label>Perfil para las etiquetas <select id="silent-profile" aria-label="Perfil para impresión sin diálogo"></select></label></p><p id="silent-status" role="status"></p><p>Desmarcado: se muestra el selector Windows habitual. Marcado: se envían las etiquetas directamente al perfil elegido, incluidos trabajos recibidos mientras esta aplicación está abierta. Si la impresora es ambigua o no está disponible, se detiene el envío. Sin serial físico, verifica el equipo antes de activar este modo.</p><button id="refresh">Actualizar inventario</button><h2>Impresoras instaladas</h2><p>Sin serial físico fiable la coincidencia es probable. Dos equipos iguales son ambiguos: verifique con Windows y vuelva a vincular. No se reasignan perfiles automáticamente.</p><div id="printers"></div><h2>Perfiles locales</h2><div id="profiles"></div><form id="new"><label>Nuevo perfil <input id="label" maxlength="80" required></label><button>Agregar</button></form><h2>Diagnóstico</h2><p id="diagnostic"></p></main><script src="ui.js"></script></body></html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Impresoras · Ivoolve Print</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand"><span class="brand-icon" data-icon="printer"></span><div><span class="brand-name">Ivoolve <span class="text-pink-600">Print</span></span><p class="eyebrow">CENTRO DE IMPRESIÓN</p></div></div>
+    <span class="station-badge"><span class="status-dot"></span> Configuración local <span class="beta-badge">BETA</span></span>
+  </header>
+  <div class="workspace">
+    <aside class="sidebar">
+      <p class="nav-caption">TU ESTACIÓN</p>
+      <a class="nav-item nav-active" href="#overview"><span data-icon="sliders"></span> Configuración</a>
+      <a class="nav-item" href="#inventory"><span data-icon="printer"></span> Impresoras</a>
+      <a class="nav-item" href="#profile-section"><span data-icon="layers"></span> Perfiles</a>
+      <a class="nav-item" href="#diagnostics"><span data-icon="shield"></span> Diagnóstico</a>
+      <div class="sidebar-note"><span data-icon="shield"></span><p><strong>En esta estación</strong><br>Los perfiles se guardan localmente en este equipo.</p></div>
+    </aside>
+    <main class="main-content" id="overview">
+      <div class="page-heading"><div><p class="eyebrow text-pink-600">PREFERENCIAS DEL EQUIPO</p><h1>Tu espacio de impresión<span class="text-pink-500">.</span></h1><p class="subtitle">Conecta cada tarea con la impresora correcta.</p></div><span class="heading-icon" data-icon="sliders"></span></div>
+      <section class="activation-card" aria-labelledby="activation-title">
+        <div class="flex items-start gap-3"><span class="icon-tile" data-icon="power"></span><div><h2 id="activation-title">Perfiles de impresoras BETA</h2><p class="muted">Organiza las impresoras y el modo de impresión de esta estación.</p></div></div>
+        <label class="check-label"><input type="checkbox" id="enabled"><span>Habilitar perfiles BETA<span class="block text-xs font-normal text-slate-500">Solo en este equipo</span></span></label>
+      </section>
+      <p id="message" class="notice notice-error" role="status" aria-live="polite"></p>
+      <section id="disabled-state" class="disabled-state" hidden>
+        <span class="empty-icon" data-icon="printer"></span><span class="beta-badge">TODO LISTO PARA CONFIGURAR</span><h2>Una impresora para cada tarea</h2><p>Activa los perfiles BETA para ver las impresoras instaladas, vincular tus perfiles y elegir cómo imprimir.</p>
+        <div class="empty-features"><span><i data-icon="printer"></i> Detecta tus impresoras</span><span><i data-icon="link"></i> Vincula cada perfil</span><span><i data-icon="shield"></i> Configuración local</span></div>
+      </section>
+      <div id="panel" hidden>
+        <div class="summary-grid" aria-label="Resumen de la estación">
+          <div class="summary-card"><span class="icon-tile" data-icon="printer"></span><div><p class="metric-label">Impresoras detectadas</p><strong id="printer-count" class="metric">—</strong></div></div>
+          <div class="summary-card"><span class="icon-tile icon-blue" data-icon="layers"></span><div><p class="metric-label">Perfiles vinculados</p><strong id="profile-count" class="metric">—</strong></div></div>
+          <div class="summary-card"><span class="icon-tile icon-violet" data-icon="bolt"></span><div><p class="metric-label">Modo de impresión</p><strong id="mode-summary" class="text-sm font-semibold text-slate-800">Con diálogo</strong></div></div>
+        </div>
+        <section class="surface" aria-labelledby="mode-title">
+          <div class="section-heading"><div class="flex items-center gap-3"><span class="section-icon" data-icon="bolt"></span><div><h2 id="mode-title">¿Cómo quieres imprimir?</h2><p class="muted">Elige el comportamiento de los trabajos de etiquetas.</p></div></div><span class="tag tag-neutral">ETIQUETAS</span></div>
+          <div class="mode-grid"><label class="mode-choice"><input type="checkbox" id="silent"><span><strong>Imprimir sin cuadro de diálogo</strong><span class="block mt-1 text-sm text-slate-500">Envía las etiquetas directamente al perfil seleccionado.</span></span><span data-icon="bolt" class="ml-auto text-pink-500"></span></label><div><label class="field-label" for="silent-profile">Perfil de destino</label><select id="silent-profile" aria-label="Perfil para impresión sin diálogo"></select><p id="silent-status" class="mode-status" role="status"></p></div></div>
+          <div class="info-line"><span data-icon="info"></span><p>Desmarcado: se abre el selector de Windows. Si activas el modo sin diálogo y la impresora no se encuentra o es ambigua, el envío se detiene. Verifica el equipo físico antes de activarlo.</p></div>
+        </section>
+        <section id="inventory" class="section-block" aria-labelledby="inventory-title">
+          <div class="section-heading"><div><p class="eyebrow">DISPOSITIVOS</p><h2 id="inventory-title">Impresoras instaladas <span id="inventory-count" class="count-badge">0</span></h2><p class="muted">Consulta los dispositivos que reconoce este equipo.</p></div><button id="refresh" class="btn btn-secondary"><span data-icon="refresh"></span><span>Actualizar lista</span></button></div>
+          <div id="printers" class="printer-grid"></div>
+          <p class="section-footnote"><span data-icon="info"></span> Dos equipos iguales sin serial fiable pueden ser ambiguos. No se reasignan perfiles automáticamente.</p>
+        </section>
+        <section id="profile-section" class="section-block" aria-labelledby="profiles-title">
+          <div class="section-heading"><div><p class="eyebrow">ASIGNACIONES</p><h2 id="profiles-title">Perfiles de impresión</h2><p class="muted">Guarda qué impresora corresponde a cada tarea.</p></div><span class="tag tag-neutral">GUARDADO LOCAL</span></div>
+          <div id="profiles" class="profile-grid"></div>
+          <form id="new" class="new-profile"><span class="icon-tile" data-icon="plus"></span><div class="flex-1"><label class="field-label" for="label">Crear un perfil</label><input id="label" maxlength="80" placeholder="Ej. Facturas, Empaque…" required></div><button class="btn btn-primary" type="submit"><span data-icon="plus"></span>Agregar perfil</button></form>
+        </section>
+        <section id="diagnostics" class="diagnostics" aria-labelledby="diagnostic-title"><span class="icon-tile icon-blue" data-icon="shield"></span><div><h2 id="diagnostic-title">Diagnóstico de la estación</h2><p id="diagnostic" class="muted"></p><p id="last-refresh" class="text-xs text-slate-500 mt-2"></p></div></section>
+      </div>
+      <footer class="page-footer"><span>Ivoolve Print <span class="text-slate-300 mx-2">/</span> Preferencias de esta estación</span><span>Programandoweb</span></footer>
+    </main>
+  </div>
+  <script src="ui.js"></script>
+</body>
+</html>

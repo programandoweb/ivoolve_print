@@ -203,3 +203,36 @@ USB003 o del nombre de cola. Este modo requiere validación física en Windows.
 
 Para recibir el check es necesario actualizar el repositorio local y reiniciar
 Electron; el despliegue de Vercel por sí solo no cambia el código local.
+
+## Interfaz Electron con Tailwind local
+
+La ventana local dispone de cabecera, navegación por secciones en ventanas amplias,
+resumen de la estación, tarjetas de dispositivos y perfiles, estados de vinculación,
+identificación técnica desplegable, controles del modo de impresión y pantalla OFF.
+Iconos SVG locales, fondos claros y acentos rosados; no usa fuentes remotas ni CDN.
+Los nombres y metadatos de impresora siguen insertándose mediante `textContent`.
+La política CSP y el contrato IPC no cambian. Este cambio visual no modifica
+`main.js`, selección de identidad, persistencia ni lógica de impresión.
+
+`tailwind.css` es la fuente; `style.css` es el CSS compilado que se incluye en git
+para que Electron pueda abrirlo sin ejecutar un build ni consultar la red.
+Se utilizan las dependencias PostCSS/Tailwind ya existentes del monorepo.
+Después de modificar HTML, clases de UI o estilos:
+
+```sh
+node apps/desktop/beta-printers/build-styles.cjs
+node --check apps/desktop/beta-printers/ui.js
+node --test apps/desktop/beta-printers/test/*.test.js
+git diff --check
+```
+
+Verificación visual y funcional de esta interfaz realizada en Chromium headless
+con puente IPC simulado: 1100×800 (ventana habitual), 390×844 (ventana estrecha)
+y 1400×900 (BETA OFF). Se inspeccionaron capturas y se verificaron tarjetas,
+contadores, alta/edición de perfiles, checkbox sin diálogo, refresco y habilitación.
+Sin errores JavaScript ni desbordamiento horizontal a 390 px. Esto valida la UI;
+no acredita drivers, Electron nativo ni impresoras físicas en Windows.
+
+Para ver el nuevo diseño: actualizar el repositorio local y reiniciar Electron.
+No requiere redesplegar el frontend de Vercel ni reinstalar dependencias en una
+estación que ya ejecuta la aplicación.
