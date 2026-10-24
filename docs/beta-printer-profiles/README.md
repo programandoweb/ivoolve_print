@@ -10,12 +10,12 @@ Electron ejecuta `apps/desktop/main.js`, que carga
 La configuración legada de `localStorage` no se lee ni modifica. El frontend Next
 local no es necesario para esta pantalla. No se requiere desplegar Vercel.
 
-El único archivo existente modificado es `apps/desktop/main.js`: importación y
+El montaje inicial modifica `apps/desktop/main.js`: importación y
 registro del módulo, más montaje del menú nativo visible «⚙ Impresoras BETA».
 El cambio de visibilidad de este menú es deliberado para garantizar acceso real
 sin inyectar código en el sitio remoto. No cambia la URL ni su navegación.
-`preload.js`, el handler completo `print-labels`, Socket.IO, API y plantillas
-quedan idénticos. No se modificó `ivoolveFlow`.
+El handler completo `print-labels`, su puente `window.api.print`, Socket.IO, API
+y plantillas quedan idénticos. No se modificó `ivoolveFlow`.
 
 ## Ejecución y activación
 
@@ -30,7 +30,9 @@ El comando del workspace inicia Electron directamente; el shell sigue remoto.
 Para trabajar con el flujo local habitual también se conserva `npm run dev:desktop`.
 El API local que usa la impresión tradicional debe seguir operando como antes.
 
-1. Abrir «⚙ Impresoras BETA → Configurar perfiles locales…».
+1. Abrir el engranaje «Impresoras BETA» en la esquina superior derecha del frontend
+   de Vercel dentro de Electron. También sigue disponible el menú nativo
+   «⚙ Impresoras BETA → Configurar perfiles locales…».
 2. BETA comienza apagada en una instalación nueva. Habilitarla explícitamente.
 3. La lista se consulta al abrir la pantalla habilitada o actualizar manualmente.
 4. Asignar colas a Etiquetas, Membretes o Despachos; crear, renombrar, desvincular
@@ -56,7 +58,9 @@ es local; no hay variable de entorno que la active inadvertidamente.
   y buffer limitado. Fallo de CIM conserva inventario Electron y diagnóstico.
 - `index.js`: IPC nominado; solo acepta el webContents, frame principal y URL
   exacta del documento local. Impide navegación, popups y webviews de la ventana.
-  No expone nada al preload remoto existente. Todo efecto BETA requiere activación.
+  El frontend remoto solo puede abrir esta ventana mediante un launcher separado.
+  Inventario, perfiles y pruebas mantienen IPC exclusivo del documento local.
+  Todo efecto de configuración BETA requiere activación.
 - `preload.js`: puente exclusivo de la ventana local, sin ipcRenderer genérico.
 - `index.html`, `style.css`, `ui.js`: UI local con CSP sin red ni código inline,
   contenido de impresoras insertado mediante textContent; perfiles en ancho completo.
@@ -108,12 +112,20 @@ Las pruebas cubren identidad/collisiones, nombres mutables, corrupción/reinicio
 esquema inválido/escritura fallida, fallback CIM, IPC con origen/frame falsos,
 modo OFF sin inventario, CRUD, confirmación/cancelación, ambigüedad, una prueba
 concurrente, cambio a OFF durante confirmación, una página no silenciosa y
-comparación byte a byte del handler legado/preload contra baseline.
+comparación byte a byte del handler legado y preservación del puente de impresión
+original contra baseline. También se prueba que el launcher acepte únicamente el
+shell registrado, su frame principal y el origen HTTPS exacto de Vercel, y que ese
+remitente siga sin acceso al IPC de configuración.
 
-Código nuevo CommonJS y assets estáticos sin dependencias nuevas, transpilation,
-lint configurado o build propio. No se modificó Next/TypeScript/Nest; sus builds
-no validan esta ventana y no se ejecutaron. Node syntax checks son aplicables al
-código nuevo. No se ejecutó Electron gráfico, Windows, PowerShell CIM real,
+No se agregaron dependencias. Para el acceso web se ejecutaron el build de
+Next.js (incluye TypeScript) y ESLint sobre el componente nuevo:
+
+```sh
+npm exec --workspace=frontend -- eslint app/components/PrinterSettings.tsx
+npm run build --workspace=frontend
+```
+
+Node syntax checks siguen aplicándose al módulo Electron. No se ejecutó Electron gráfico, Windows, PowerShell CIM real,
 impresoras físicas ni diálogo del driver en el entorno Linux de implementación.
 No se afirma validación física.
 
@@ -127,3 +139,25 @@ Antes de uso operativo, verificar en Windows:
   verificar físicamente destino, página y copias.
 - Impresión habitual desde app y sockets conserva selector/layout/ack.
 - Archivo corrupto no impide iniciar ni imprimir con el flujo tradicional.
+
+## Acceso desde el frontend de Vercel
+
+El componente aislado `frontend/app/components/PrinterSettings.tsx` se monta en
+`frontend/app/layout.tsx`; el engranaje es visible en login, dashboard e impresión,
+incluso al abrir la URL en un navegador. No cambia sockets ni handlers de impresión.
+En navegador muestra un diálogo explicando que el inventario de Windows requiere
+Ivoolve Print de escritorio; no simula impresoras ni guarda vinculaciones ficticias.
+
+El preload principal añade `window.ivoolvePrinterSettings.open()` solo en
+`https://ivoolve-print-frontend.vercel.app`. El proceso principal verifica además
+webContents registrado, frame principal y origen exacto al recibir la llamada.
+El launcher no admite rutas, URLs, nombres de impresora ni comandos. Su único
+efecto es abrir/enfocar el documento local controlado; no expone el almacén ni
+el inventario al frontend remoto. El menú nativo sigue disponible para estaciones
+que aún cargan una versión anterior del frontend.
+
+Para ver el engranaje web debe desplegarse este commit del frontend en Vercel.
+Para abrir la configuración mediante él también debe actualizarse/reiniciarse
+Electron (incluye cambios en preload y registro IPC). Recargar Vercel no actualiza
+el binario ni el proceso Electron instalado. El estado del despliegue Vercel debe
+confirmarse en la plataforma; un push no acredita por sí solo un despliegue.

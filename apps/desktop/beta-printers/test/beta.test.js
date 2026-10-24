@@ -70,13 +70,13 @@ test('IPC: exact local frame only; off means no inventory; profiles validation; 
   assert.equal((await h.invoke('testPrint', { confirmed: false, identity })).ok, false)
   assert.equal((await h.invoke('testPrint', { confirmed: true, identity: { ...identity, driver: '', port: '', pnp: '' } })).ok, false)
 })
-test('regression: entire legacy print handler and preload byte-identical to baseline', () => {
+test('regression: legacy print handler and original print bridge unchanged', () => {
   const root = path.resolve(__dirname, '../../../..')
   const baseline = execFileSync('git', ['show', 'e1a758cebdf2a77e1653010e2d747fd8043776a8:apps/desktop/main.js'], { cwd: root, encoding: 'utf8' })
   const current = fs.readFileSync(path.join(root, 'apps/desktop/main.js'), 'utf8')
   const handler = s => s.slice(s.indexOf("ipcMain.handle('print-labels'"), s.indexOf('app.whenReady()'))
   assert.equal(handler(current), handler(baseline))
-  assert.equal(fs.readFileSync(path.join(root, 'apps/desktop/preload.js'), 'utf8'), execFileSync('git', ['show', 'e1a758cebdf2a77e1653010e2d747fd8043776a8:apps/desktop/preload.js'], { cwd: root, encoding: 'utf8' }))
+  assert.ok(fs.readFileSync(path.join(root, 'apps/desktop/preload.js'), 'utf8').startsWith(execFileSync('git', ['show', 'e1a758cebdf2a77e1653010e2d747fd8043776a8:apps/desktop/preload.js'], { cwd: root, encoding: 'utf8' })))
 })
 test('test print: native cancellation, one page non-silent, single in-flight request', async t => {
   let local; let prints = []; let response = 0; const handlers = {}; let confirmPending; let release
@@ -105,4 +105,24 @@ test('test print: native cancellation, one page non-silent, single in-flight req
   assert.equal((await invoke('testPrint', { identity: selected, confirmed: true })).ok, false)
   await invoke('setEnabled', false); release()
   assert.equal((await pending).ok, false); assert.equal(prints.length, 1)
+})
+test('Vercel launcher: only registered shell and exact HTTPS origin/top frame; no configuration access', async t => {
+  const handlers = {}; let windows = 0
+  class Window {
+    constructor() { windows++; this.webContents = { mainFrame: {}, setWindowOpenHandler() {}, on() {} } }
+    on() {} loadFile() {} isDestroyed() { return false } focus() {}
+  }
+  const attach = register({ app: { getPath: () => temp(t) }, BrowserWindow: Window, Menu: { buildFromTemplate() {} }, ipcMain: { handle: (key, fn) => { handlers[key] = fn } }, dialog: {} })
+  const shell = { webContents: { mainFrame: { url: 'https://ivoolve-print-frontend.vercel.app/dashboard' } }, setMenu() {}, setMenuBarVisibility() {} }
+  attach(shell)
+  const event = { sender: shell.webContents, senderFrame: shell.webContents.mainFrame }
+  const launch = handlers['beta-printers:open-settings']
+  assert.deepEqual(launch(event), { ok: true }); assert.equal(windows, 1)
+  launch(event); assert.equal(windows, 1)
+  await assert.rejects(handlers['beta-printers:getStatus'](event), /Origen/)
+  assert.throws(() => launch({ ...event, sender: { mainFrame: event.senderFrame } }), /Origen/)
+  assert.throws(() => launch({ ...event, senderFrame: { url: event.senderFrame.url } }), /Origen/)
+  for (const url of ['http://ivoolve-print-frontend.vercel.app', 'https://ivoolve-print-frontend.vercel.app.evil.test', 'file:///tmp/test.html']) {
+    event.senderFrame.url = url; assert.throws(() => launch(event), /Origen/)
+  }
 })

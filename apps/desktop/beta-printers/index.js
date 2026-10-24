@@ -8,6 +8,7 @@ const escape = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>'
 function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
   const url = pathToFileURL(path.join(__dirname, 'index.html')).href
   const store = new Store(app.getPath('userData'))
+  const authorizedShells = new WeakSet()
   let window = null; let busy = false
   const status = () => ({ ...store.read(), diagnostic: store.diagnostic })
   const handlers = {
@@ -61,6 +62,14 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
       } catch { return { ok: false, error: 'Operación rechazada. Revise los datos, habilitación BETA, permisos y coincidencia del dispositivo; si es ambiguo, verifique manualmente en Windows.' } }
     })
   }
+  // The remote shell can only open our local window. Configuration IPC remains local.
+  ipcMain.handle('beta-printers:open-settings', (event) => {
+    let allowedOrigin = false
+    try { allowedOrigin = new URL(event.senderFrame.url).origin === 'https://ivoolve-print-frontend.vercel.app' } catch {}
+    if (!authorizedShells.has(event.sender) || event.senderFrame !== event.sender.mainFrame || !allowedOrigin) throw Error('Origen no autorizado')
+    open()
+    return { ok: true }
+  })
   function open() {
     if (window && !window.isDestroyed()) return window.focus()
     window = new BrowserWindow({ width: 1100, height: 800, title: 'Impresoras BETA', autoHideMenuBar: true,
@@ -72,6 +81,7 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     window.loadFile(path.join(__dirname, 'index.html'))
   }
   return function attach(shell) {
+    if (shell.webContents) authorizedShells.add(shell.webContents)
     shell.setMenu(Menu.buildFromTemplate([{ label: '⚙ Impresoras BETA', submenu: [{ label: 'Configurar perfiles locales…', click: open }] }]))
     shell.setMenuBarVisibility(true)
   }

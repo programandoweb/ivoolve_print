@@ -6,6 +6,7 @@ import ThemeProvider from "@/providers/ThemeProvider";
 import { Suspense } from "react";
 import Snackbar from "./components/snackbar";
 import ToastListener from "./components/ToastListener";
+import PrinterSettings from "./components/PrinterSettings";
 
 
 const inter = Inter({ subsets: ["latin"] });
@@ -95,6 +96,7 @@ export default function RootLayout({
             <Suspense fallback={<div>Loading...</div>}>
               <ToastListener/>
               <Snackbar />
+              <PrinterSettings />
               {children}        
             </Suspense>
           </ThemeProvider>
