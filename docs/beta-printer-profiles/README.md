@@ -56,7 +56,7 @@ perfil, con texto visible de modo con diálogo, sin diálogo o pausado.
 - Esquema v1 con extensión compatible; UUID de estación sin hostname.
 - `labelsProfileId` guarda el destino de etiquetas por ID estable.
 - Cada perfil conserva `id`, `label`, `identity`, `enabled`, `silentEnabled` y
-  `silentQueueConfirmation` independiente.
+  `silentQueueConfirmation` independiente, más `paper` con sus ajustes físicos.
 - Al leer configuraciones anteriores, se conservan todos los perfiles y sus
   huellas. La selección global anterior se convierte en destino de etiquetas;
   su modo silencioso y confirmación se trasladan únicamente a ese perfil.
@@ -144,11 +144,13 @@ node --test apps/desktop/beta-printers/test/*.test.js
 git diff --check
 ```
 
-17 pruebas automatizadas: inventario/fallback CIM, esquema/corrupción/escritura,
+23 pruebas automatizadas: inventario/fallback CIM, esquema/corrupción/escritura,
 regresión del handler/preload, origen/frame IPC, cancelación/confirmación manual,
 colisiones/offline, persistencia/migración, modos por perfil independientes,
 pausa efectiva de trabajos con/sin diálogo, selección por ID, renombrado y
-reactivación sin activación silenciosa inesperada.
+reactivación sin activación silenciosa inesperada; medidas por perfil, conversión
+de unidades, validación de entradas, CSS opcional, preservación de modos al
+guardar papel y prueba de calibración confirmada/cancelada de una sola página.
 
 La UI se revisó en Chromium con datos e IPC simulados a 1100×800, 390×844 y
 1400×900: checks independientes, controles deshabilitados, CRUD, refresco,
@@ -159,3 +161,62 @@ no acreditan Electron nativo, drivers ni hardware Windows.
 Pendiente validar físicamente: reinicio y migración en la estación, dos USB
 iguales, confirmación de cola/puerto, impresión sin diálogo real, perfil pausado,
 cambio de puerto, cancelación del driver y flujo habitual con diálogo.
+
+## Papel y calibración por perfil
+
+Dentro de cada tarjeta, desplegar «Papel y calibración». Los valores iniciales
+son números reales en los inputs (no placeholders), editables y persistentes:
+
+| Campo | Valor inicial | Aplicación |
+| --- | --- | --- |
+| Origen del papel | Configuración de Windows | Usa el tamaño definido en la cola |
+| Ancho × alto | 101,6 × 101,6 mm | Se aplican al elegir Medidas personalizadas |
+| Orientación | Vertical | Se aplica en Personalizado |
+| Márgenes superior/derecho/inferior/izquierdo | 0 mm | Se aplican en Personalizado |
+| Desplazamiento X / Y | 0 / 0 mm | Ajusta posición en ambos modos |
+| Material expuesto izquierdo / derecho | 1,3 / 1,3 mm | Referencia del driver; no se transforma en márgenes |
+
+No se rediseña la plantilla API existente: etiquetas de 32 × 22 mm, tres columnas,
+con la misma distribución. Cambiar papel no modifica automáticamente sus cajas
+ni garantiza que todo el contenido quepa en cualquier tamaño menor. Los sensores
+de gap/material, velocidad, temperatura y calibración mecánica siguen en Windows.
+
+Las configuraciones anteriores reciben estos valores sin perder asociaciones,
+checks, destino de etiquetas ni autorizaciones. «Guardar papel» guarda solo ese
+perfil. El Guardar de nombre/impresora conserva su papel. Editar datos no requiere
+modificar código; para aplicar cambios de medidas debe seleccionarse Personalizado.
+No se escribe en las preferencias globales de Windows.
+
+En modo driver, los trabajos con diálogo mantienen sus opciones previas; los
+silenciosos añaden `usePrinterDefaultPageSize: true` para consultar el tamaño de
+esa cola. Si Windows no lo entrega, Electron puede usar A4: verificar mediante
+calibración o elegir las medidas personalizadas si el controlador no responde.
+Los campos de orientación/márgenes no sobrescriben el documento en este modo;
+se conserva la orientación vertical/margen cero del flujo actual.
+
+En Personalizado, el ancho/alto se convierten a micras para Electron, la
+orientación define el lado largo/corto, los márgenes a píxeles CSS (96 dpi) y
+la escala se fija al 100 %. `@page` se aplica solo en la ventana de impresión
+mediante CSS validado; X/Y se aplican solo si son distintos de cero. No se
+reescribe el HTML entregado por el API ni las medidas de sus etiquetas. La
+configuración por defecto no inyecta CSS. Si la inyección falla se cierra la
+ventana y no se envía el trabajo. Desplazamientos negativos pueden recortar
+contenido; validar físicamente antes de uso operativo.
+
+Límites: ancho 5–1000 mm, alto 5–2000 mm, márgenes/material expuesto 0–100 mm,
+X/Y entre −20 y 20 mm. Se rechazan valores no finitos, texto/CSS y márgenes
+que consuman toda la superficie. Windows/driver pueden imponer límites mayores.
+
+«Imprimir calibración» usa la configuración GUARDADA del perfil y dibuja un
+cuadro de referencia de 20 × 20 mm. Requiere perfil activo, impresora válida,
+confirmación renderer, confirmación nativa y diálogo Windows; siempre una página
+y una copia por código, incluso si el perfil es silencioso. Verificar en ese
+diálogo el destino y una copia: el driver permite ajustes manuales. Para equipos
+iguales se requiere una cola ya confirmada o verificar primero desde Windows.
+No cambia los checks ni autoriza impresoras nuevas; cancelar no imprime.
+
+Validación UI adicional en Chromium con IPC simulado: valores iniciales 101,6 y
+1,3 visibles, guardado de papel, cambios X/Y persistidos y aislamiento entre
+perfiles, vista de escritorio y ventana estrecha sin overflow. Ninguna prueba
+automatizada acredita las medidas impresas en hardware Windows; medir el patrón
+físico y comprobar alimentación del rollo sigue pendiente.

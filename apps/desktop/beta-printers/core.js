@@ -1,5 +1,6 @@
 const fs = require('node:fs')
 const path = require('node:path')
+const { defaults: defaultPaper, validPaper } = require('./paper')
 const { randomUUID } = require('node:crypto')
 const text = (value, max = 256) => typeof value === 'string' && value.length <= max && !/[\x00-\x1f]/.test(value)
 const identityKeys = ['name', 'driver', 'port', 'pnp', 'serial']
@@ -18,14 +19,14 @@ function resolve(identity, printers) {
   return { state: exact.length === 1 ? 'probable' : 'not-found', candidates: exact }
 }
 function initial() {
-  const profiles = ['Etiquetas', 'Membretes', 'Despachos'].map(label => ({ id: randomUUID(), label, identity: null, enabled: true, silentEnabled: false, silentQueueConfirmation: null }))
+  const profiles = ['Etiquetas', 'Membretes', 'Despachos'].map(label => ({ id: randomUUID(), label, identity: null, enabled: true, silentEnabled: false, silentQueueConfirmation: null, paper: defaultPaper() }))
   return { version: 1, station: randomUUID(), enabled: false, labelsProfileId: profiles[0].id, updatedAt: new Date().toISOString(), profiles }
 }
 function validState(s) {
   return s && s.version === 1 && text(s.station, 64) && typeof s.enabled === 'boolean' && (s.labelsProfileId === undefined || text(s.labelsProfileId, 64)) &&
     (s.silentEnabled === undefined || typeof s.silentEnabled === 'boolean') && (s.silentProfileId === undefined || text(s.silentProfileId, 64)) && (s.silentQueueConfirmation == null || validIdentity(s.silentQueueConfirmation)) && text(s.updatedAt, 64) && Array.isArray(s.profiles) && s.profiles.length <= 100 &&
     s.profiles.every(p => p && text(p.id, 64) && p.id.length && text(p.label, 80) && p.label.trim() && (p.identity === null || validIdentity(p.identity)) &&
-      (p.enabled === undefined || typeof p.enabled === 'boolean') && (p.silentEnabled === undefined || typeof p.silentEnabled === 'boolean') && (p.silentQueueConfirmation == null || validIdentity(p.silentQueueConfirmation))) &&
+      (p.enabled === undefined || typeof p.enabled === 'boolean') && (p.silentEnabled === undefined || typeof p.silentEnabled === 'boolean') && (p.silentQueueConfirmation == null || validIdentity(p.silentQueueConfirmation)) && (p.paper === undefined || validPaper(p.paper))) &&
     new Set(s.profiles.map(p => p.id)).size === s.profiles.length && new Set(s.profiles.map(p => p.label.trim().toLocaleLowerCase())).size === s.profiles.length
 }
 function normalize(s) {
@@ -33,7 +34,7 @@ function normalize(s) {
   return {
     ...rest,
     labelsProfileId: s.labelsProfileId ?? (silentProfileId || s.profiles.find(p => p.label.trim().toLocaleLowerCase() === 'etiquetas')?.id || ''),
-    profiles: s.profiles.map(p => ({ ...p, enabled: p.enabled ?? true, silentEnabled: p.silentEnabled ?? (p.id === silentProfileId && silentEnabled === true), silentQueueConfirmation: p.silentQueueConfirmation ?? (p.id === silentProfileId ? silentQueueConfirmation ?? null : null) })),
+    profiles: s.profiles.map(p => ({ ...p, paper: p.paper ?? defaultPaper(), enabled: p.enabled ?? true, silentEnabled: p.silentEnabled ?? (p.id === silentProfileId && silentEnabled === true), silentQueueConfirmation: p.silentQueueConfirmation ?? (p.id === silentProfileId ? silentQueueConfirmation ?? null : null) })),
   }
 }
 class Store {

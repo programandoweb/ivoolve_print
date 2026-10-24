@@ -39,7 +39,7 @@ ipcMain.handle('print-labels', async (_event, payload) => {
       }
     }
 
-    const printerOptions = await attachBetaPrinters.getPrintOptions(_event)
+    const { options: printerOptions, css: profileCss } = await attachBetaPrinters.getPrintPlan(_event)
 
     const printWindow = new BrowserWindow({
       show: false,
@@ -49,6 +49,13 @@ ipcMain.handle('print-labels', async (_event, payload) => {
     })
 
     await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`)
+
+    if (profileCss) {
+      try { await printWindow.webContents.insertCSS(profileCss) } catch {
+        printWindow.close()
+        throw Error('No fue posible aplicar la calibración del perfil. No se envió la impresión.')
+      }
+    }
 
     return await new Promise((resolve) => {
       printWindow.webContents.print(

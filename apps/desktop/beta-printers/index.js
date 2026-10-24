@@ -3,6 +3,7 @@ const { pathToFileURL } = require('node:url')
 const { randomUUID } = require('node:crypto')
 const { Store, resolve, validIdentity, text } = require('./core')
 const { inventory } = require('./inventory')
+const { defaults: defaultPaper, validPaper, paperOptions, paperCss, calibrationHtml } = require('./paper')
 const { silentOptions, printProfile, sameIdentity } = require('./silent')
 const same = (a, b) => ['name', 'driver', 'port', 'pnp', 'serial'].every(k => a[k] === b[k])
 const escape = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
@@ -61,8 +62,41 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
       if (state.profiles.some(p => p.id !== id && p.label.toLocaleLowerCase() === value.label.trim().toLocaleLowerCase())) throw Error('El nombre del perfil ya existe')
       const previous = state.profiles.find(p => p.id === id)
       const unchanged = previous && ((previous.identity === null && value.identity === null) || sameIdentity(previous.identity, value.identity))
-      const profile = { id, label: value.label.trim(), identity: value.identity, enabled: previous?.enabled ?? true, silentEnabled: unchanged ? previous.silentEnabled : false, silentQueueConfirmation: unchanged ? previous.silentQueueConfirmation : null }
+      const profile = { paper: previous?.paper ?? defaultPaper(), id, label: value.label.trim(), identity: value.identity, enabled: previous?.enabled ?? true, silentEnabled: unchanged ? previous.silentEnabled : false, silentQueueConfirmation: unchanged ? previous.silentQueueConfirmation : null }
       return store.write({ ...state, profiles: [...state.profiles.filter(p => p.id !== id), profile] })
+    },
+    savePaper(value) {
+      if (!value || !text(value.id, 64) || !validPaper(value.paper)) throw Error('Papel: medidas o márgenes inválidos.')
+      const state = store.read()
+      if (!state.profiles.some(p => p.id === value.id)) throw Error('Perfil desconocido')
+      return store.write({ ...state, profiles: state.profiles.map(p => p.id === value.id ? { ...p, paper: { ...value.paper } } : p) })
+    },
+    async calibrateProfile(value) {
+      if (!value || !text(value.id, 64) || value.confirmed !== true || busy) throw Error('Prueba inválida o en curso')
+      busy = true
+      let printWindow
+      try {
+        const state = store.read()
+        const profile = printProfile(state, value.id)
+        if (!profile?.identity) throw Error('Papel: vincule una impresora antes de calibrar.')
+        const validate = async () => {
+          if (store.read() !== state) throw Error('Configuración modificada; vuelva a intentarlo')
+          const result = await inventory(window.webContents)
+          const checkState = { ...state, profiles: state.profiles.map(p => p.id === profile.id ? { ...p, silentEnabled: true } : p) }
+          const target = silentOptions(checkState, result.printers, profile.id)
+          if (store.read() !== state) throw Error('Configuración modificada; vuelva a intentarlo')
+          return target.deviceName
+        }
+        const deviceName = await validate()
+        const paper = profile.paper ?? defaultPaper()
+        const choice = await dialog.showMessageBox(window, { type: 'question', buttons: ['Cancelar', 'Imprimir calibración'], defaultId: 0, cancelId: 0,
+          message: 'Imprimir una página de calibración', detail: `Perfil: ${profile.label}\nCola: ${deviceName}\nPapel: ${paper.source === 'driver' ? 'Configuración de Windows' : paper.widthMm + ' × ' + paper.heightMm + ' mm'}\nSe abrirá el diálogo Windows. Confirme esta misma cola y una copia.` })
+        if (choice.response !== 1) return { cancelled: true }
+        await validate()
+        printWindow = new BrowserWindow({ show: false, webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true } })
+        await printWindow.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(calibrationHtml(paper, profile.label))}`)
+        return await new Promise(resolveResult => printWindow.webContents.print({ ...paperOptions(paper, true), silent: false, deviceName, copies: 1, pageRanges: [{ from: 0, to: 0 }], printBackground: true }, success => resolveResult({ success })))
+      } finally { if (printWindow && !printWindow.isDestroyed()) printWindow.close(); busy = false }
     },
     removeProfile(id) {
       if (!text(id, 64) || !store.read().profiles.some(p => p.id === id)) throw Error('Perfil desconocido')
@@ -97,7 +131,7 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
       try {
         if (!['getStatus', 'setEnabled'].includes(method) && !store.read().enabled) throw Error('BETA desactivada')
         return { ok: true, data: await handler(value) }
-      } catch (error) { return { ok: false, error: method === 'setProfileSettings' && error.message.startsWith('Impresión sin diálogo') ? error.message : 'Operación rechazada. Revise los datos, habilitación BETA, permisos y coincidencia del dispositivo; si es ambiguo, verifique manualmente en Windows.' } }
+      } catch (error) { return { ok: false, error: ((method === 'setProfileSettings' && error.message.startsWith('Impresión sin diálogo')) || (['savePaper', 'calibrateProfile'].includes(method) && error.message.startsWith('Papel:'))) ? error.message : 'Operación rechazada. Revise los datos, habilitación BETA, permisos y coincidencia del dispositivo; si es ambiguo, verifique manualmente en Windows.' } }
     })
   }
   // The remote shell can only open our local window. Configuration IPC remains local.
@@ -123,17 +157,23 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     shell.setMenu(Menu.buildFromTemplate([{ label: '⚙ Impresoras BETA', submenu: [{ label: 'Configurar perfiles locales…', click: open }] }]))
     shell.setMenuBarVisibility(true)
   }
-  attach.getPrintOptions = async (event) => {
+  attach.getPrintPlan = async (event) => {
     const state = store.read()
     const profile = printProfile(state)
-    if (!profile?.silentEnabled) return {}
+    if (!profile) return { options: {}, css: '' }
+    const paper = profile.paper ?? defaultPaper()
+    const css = paperCss(paper)
+    const options = paperOptions(paper, profile.silentEnabled)
+    if (!profile.silentEnabled && paper.source === 'driver' && !css) return { options, css }
     let allowedOrigin = false
     try { allowedOrigin = new URL(event.senderFrame.url).origin === 'https://ivoolve-print-frontend.vercel.app' } catch {}
-    if (!authorizedShells.has(event.sender) || event.senderFrame !== event.sender.mainFrame || !allowedOrigin) throw Error('Origen no autorizado para impresión sin diálogo')
+    if (!authorizedShells.has(event.sender) || event.senderFrame !== event.sender.mainFrame || !allowedOrigin) throw Error('Origen no autorizado para impresión configurada')
+    if (!profile.silentEnabled) return { options, css }
     const result = await inventory(event.sender)
     if (store.read() !== state) throw Error('Configuración modificada durante la impresión. Vuelva a enviar el trabajo.')
-    return silentOptions(state, result.printers)
+    return { options: { ...silentOptions(state, result.printers), ...options }, css }
   }
+  attach.getPrintOptions = async event => (await attach.getPrintPlan(event)).options
   return attach
 }
 module.exports = { register }

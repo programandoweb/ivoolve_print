@@ -77,6 +77,54 @@ async function refresh() {
     renderProfiles()
   } finally { $('refresh').disabled = false }
 }
+function paperSettings(profile) {
+  const defaults = { source: 'driver', widthMm: 101.6, heightMm: 101.6, orientation: 'portrait', topMm: 0, rightMm: 0, bottomMm: 0, leftMm: 0, offsetXMm: 0, offsetYMm: 0, exposedLeftMm: 1.3, exposedRightMm: 1.3 }
+  const saved = profile.paper || defaults
+  const details = el('details', null, 'paper-settings')
+  const summary = el('summary', 'Papel y calibración', 'paper-summary'); details.append(summary)
+  const content = el('div', null, 'paper-content')
+  const grid = el('div', null, 'paper-grid')
+  const source = el('select'); source.setAttribute('aria-label', 'Tamaño del papel')
+  for (const [value, title] of [['driver', 'Configuración de Windows'], ['custom', 'Medidas personalizadas']]) { const option = el('option', title); option.value = value; source.append(option) }
+  source.value = saved.source
+  const orientation = el('select')
+  for (const [value, title] of [['portrait', 'Vertical'], ['landscape', 'Horizontal']]) { const option = el('option', title); option.value = value; orientation.append(option) }
+  orientation.value = saved.orientation
+  content.append(field('Tamaño del papel', source))
+  grid.append(field('Orientación', orientation))
+  const inputs = {}
+  for (const [key, title, min, max] of [
+    ['widthMm', 'Ancho (mm)', 5, 1000], ['heightMm', 'Alto (mm)', 5, 2000],
+    ['topMm', 'Margen superior (mm)', 0, 100], ['rightMm', 'Margen derecho (mm)', 0, 100],
+    ['bottomMm', 'Margen inferior (mm)', 0, 100], ['leftMm', 'Margen izquierdo (mm)', 0, 100],
+    ['offsetXMm', 'Desplazamiento X (mm)', -20, 20], ['offsetYMm', 'Desplazamiento Y (mm)', -20, 20],
+    ['exposedLeftMm', 'Material expuesto izq. (mm)', 0, 100], ['exposedRightMm', 'Material expuesto der. (mm)', 0, 100],
+  ]) {
+    const input = el('input'); input.type = 'number'; input.required = true; input.min = String(min); input.max = String(max); input.step = '0.01'; input.value = String(saved[key]); inputs[key] = input
+    grid.append(field(title, input))
+  }
+  const note = el('p', null, 'binding-note')
+  const describe = () => { note.textContent = source.value === 'driver' ? 'Se usa el tamaño de papel de la cola Windows. Las medidas, orientación y márgenes de estos campos solo se aplican en Personalizado. X/Y ajustan la posición del contenido en ambos modos.' : 'Se aplican estas medidas, orientación y márgenes. La distribución de las etiquetas se conserva: cambiar el papel no rediseña su contenido.' }
+  source.onchange = describe; describe()
+  content.append(grid, note, el('p', 'Los 1,3 mm de material expuesto son una referencia del driver; no se convierten en márgenes. Sensor, velocidad y temperatura se configuran en Windows.', 'binding-note'))
+  const save = button('Guardar papel', 'check', 'btn btn-secondary')
+  save.onclick = () => run(async () => {
+    if (!Object.values(inputs).every(input => input.reportValidity())) return
+    const paper = { source: source.value, orientation: orientation.value }
+    for (const [key, input] of Object.entries(inputs)) paper[key] = input.valueAsNumber
+    state = await call('savePaper', { id: profile.id, paper }); renderProfiles(); $('message').textContent = 'Papel y calibración guardados en este perfil.'
+  })
+  const calibrate = button('Imprimir calibración', 'printer', 'btn btn-secondary')
+  calibrate.disabled = !profile.enabled || !profile.identity
+  calibrate.onclick = () => run(async () => {
+    if (!window.confirm('Se imprimirá una página con la configuración GUARDADA de este perfil. Guarda primero los cambios de papel. ¿Continuar?')) return
+    const result = await call('calibrateProfile', { id: profile.id, confirmed: true })
+    $('message').textContent = result.cancelled ? 'Calibración cancelada.' : result.success ? 'Calibración enviada. Mide el cuadro de referencia: debe tener 20 × 20 mm.' : 'La calibración no se completó.'
+  })
+  const actions = el('div', null, 'flex flex-wrap gap-2'); actions.append(save, calibrate)
+  content.append(actions); details.append(content)
+  return details
+}
 function renderProfiles() {
   $('mode-summary').textContent = String(state.profiles.filter(p => p.enabled && p.silentEnabled).length) + ' perfiles'
   $('profile-count').textContent = state.profiles.filter(p => p.enabled && p.identity).length + ' / ' + state.profiles.length
@@ -108,7 +156,7 @@ function renderProfiles() {
     const routeLabel = el('label', null, 'profile-check profile-route'); routeLabel.append(routing, el('span', 'Recibir trabajos de etiquetas'))
     const modeText = !profile.enabled ? 'Pausado: no se enviarán trabajos a este perfil.' : profile.silentEnabled ? 'Sin diálogo: envío directo a la impresora guardada.' : 'Con diálogo: Windows solicitará seleccionar la impresora.'
     controls.append(activeLabel, silentLabel, routeLabel, el('p', modeText, 'binding-note'))
-    body.append(controls)
+    body.append(controls, paperSettings(profile))
     const save = button('Guardar', 'check', 'btn btn-primary')
     save.onclick = () => run(async () => { state = await call('saveProfile', { id: profile.id, label: label.value, identity: select.value === '' ? null : printers[Number(select.value)].identity }); renderProfiles(); $('message').textContent = 'Perfil guardado correctamente.' })
     const unlink = button('Desvincular', 'unlink', 'btn btn-quiet'); unlink.disabled = !profile.identity

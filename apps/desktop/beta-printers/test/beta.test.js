@@ -75,7 +75,7 @@ test('regression: dialog path preserves legacy HTML, payload, margins and callba
   const baseline = execFileSync('git', ['show', 'e1a758cebdf2a77e1653010e2d747fd8043776a8:apps/desktop/main.js'], { cwd: root, encoding: 'utf8' })
   const current = fs.readFileSync(path.join(root, 'apps/desktop/main.js'), 'utf8')
   const handler = s => s.slice(s.indexOf("ipcMain.handle('print-labels'"), s.indexOf('app.whenReady()'))
-  const withoutOptIn = handler(current).replace('    const printerOptions = await attachBetaPrinters.getPrintOptions(_event)\n\n', '').replace('          ...printerOptions,\n', '')
+  const withoutOptIn = handler(current).replace('    const { options: printerOptions, css: profileCss } = await attachBetaPrinters.getPrintPlan(_event)\n\n', '').replace('          ...printerOptions,\n', '').replace(/    if \(profileCss\) \{[\s\S]*?\n    \}\n\n/, '')
   assert.equal(withoutOptIn, handler(baseline))
   assert.ok(fs.readFileSync(path.join(root, 'apps/desktop/preload.js'), 'utf8').startsWith(execFileSync('git', ['show', 'e1a758cebdf2a77e1653010e2d747fd8043776a8:apps/desktop/preload.js'], { cwd: root, encoding: 'utf8' })))
 })

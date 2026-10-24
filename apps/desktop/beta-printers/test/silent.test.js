@@ -40,24 +40,24 @@ test('old v1 bindings and enabled silent authorization migrate to their own prof
 })
 async function runtime(t, options = {}) {
   const dir = temp(t); const store = new Store(dir); const initial = store.read()
-  store.write({ ...initial, enabled: options.beta !== false, profiles: initial.profiles.map((p, i) => i ? p : { ...p, identity: options.missing ? null : identity, enabled: options.active !== false, silentEnabled: Boolean(options.silent) }) })
-  const handlers = {}; const windows = []; const printed = []; const requests = []; let inventoryCalls = 0; let open
+  store.write({ ...initial, enabled: options.beta !== false, profiles: initial.profiles.map((p, i) => i ? p : { ...p, paper: options.paper ?? p.paper, identity: options.missing ? null : identity, enabled: options.active !== false, silentEnabled: Boolean(options.silent) }) })
+  const handlers = {}; const windows = []; const printed = []; const requests = []; const styles = []; let inventoryCalls = 0; let open
   class Window {
     constructor() {
       windows.push(this)
       this.webContents = { mainFrame: {}, getPrintersAsync: async () => { inventoryCalls++; return options.printers || [{ name: 'Labels' }] }, setWindowOpenHandler() {}, on() {},
-        print: (printOptions, cb) => { printed.push(JSON.parse(JSON.stringify(printOptions))); cb(options.fail !== true, options.fail ? 'mock print failure' : undefined) } }
+        insertCSS: async css => { if (options.failCss) throw Error('CSS failure'); styles.push(css) }, print: (printOptions, cb) => { printed.push(JSON.parse(JSON.stringify(printOptions))); cb(options.fail !== true, options.fail ? 'mock print failure' : undefined) } }
     }
     on() {} setMenu() {} setMenuBarVisibility() {} isDestroyed() { return false } focus() {} close() { this.closed = true }
-    async loadURL(url) { this.webContents.mainFrame.url = url }
+    async loadURL(url) { this.lastUrl = url; this.webContents.mainFrame.url = url }
     loadFile(file) { this.webContents.mainFrame.url = require('node:url').pathToFileURL(file).href }
   }
-  const electron = { app: { getPath: () => dir, whenReady: () => Promise.resolve() }, BrowserWindow: Window, Menu: { buildFromTemplate: items => { open = items[0].submenu[0].click } }, ipcMain: { handle: (name, fn) => { handlers[name] = fn } }, dialog: {} }
+  const electron = { app: { getPath: () => dir, whenReady: () => Promise.resolve() }, BrowserWindow: Window, Menu: { buildFromTemplate: items => { open = items[0].submenu[0].click } }, ipcMain: { handle: (name, fn) => { handlers[name] = fn } }, dialog: { showMessageBox: async () => ({ response: options.calibrationResponse ?? 0 }) } }
   const main = path.resolve(__dirname, '../../main.js')
   vm.runInNewContext(fs.readFileSync(main, 'utf8'), { __dirname: path.dirname(main), require: name => name === 'electron' ? electron : name === './beta-printers' ? require('../index') : require(name), fetch: async (url, config) => { requests.push({ url, config }); return { ok: true, text: async () => '<html><body>labels</body></html>' } } })
   await new Promise(r => setImmediate(r))
   const event = { sender: windows[0].webContents, senderFrame: windows[0].webContents.mainFrame }
-  return { handlers, windows, printed, requests, event, open: () => open(), inventoryCalls: () => inventoryCalls, print: payload => handlers['print-labels'](event, payload) }
+  return { handlers, windows, printed, requests, styles, event, open: () => open(), inventoryCalls: () => inventoryCalls, print: payload => handlers['print-labels'](event, payload) }
 }
 test('actual main handler: unchecked retains selector/options/payload and skips inventory', async t => {
   for (const options of [{ silent: false }, { silent: true, beta: false }]) {
@@ -76,7 +76,7 @@ test('actual main handler: checked prints to saved destination, retains layout; 
     const h = await runtime(t, { silent: true, fail })
     const result = await h.print({ deviceName: 'other', silent: false })
     assert.equal(result.ok, !fail); assert.equal(h.printed.length, 1)
-    assert.deepEqual(h.printed[0], { silent: true, deviceName: 'Labels', printBackground: true, margins: { marginType: 'none' } })
+    assert.deepEqual(h.printed[0], { silent: true, usePrinterDefaultPageSize: true, deviceName: 'Labels', printBackground: true, margins: { marginType: 'none' } })
     assert.equal(h.inventoryCalls(), 1); assert.equal(h.windows[1].closed, true)
   }
 })
@@ -208,4 +208,59 @@ test('routing by ID preserves profile-specific dialog/silent/disabled modes', ()
   assert.equal(silentOptions(configured, printers).deviceName, 'Labels')
   assert.deepEqual(silentOptions(configured, printers, 'b'), {})
   assert.throws(() => silentOptions(configured, printers, 'c'), /desactivado/)
+})
+
+test('main handler: custom paper/calibration applied without changing API HTML or label contents', async t => {
+  const paper = { ...require('../paper').defaults(), source: 'custom', leftMm: 2.54, offsetXMm: 1.5 }
+  for (const silent of [true, false]) {
+    const h = await runtime(t, { silent, paper })
+    assert.equal((await h.print({ order: 1 })).ok, true)
+    const output = h.printed[0]
+    assert.equal(output.silent, silent); assert.deepEqual(output.pageSize, { width: 101600, height: 101600 })
+    assert.equal(output.margins.left, 9.6); assert.equal(h.styles.length, 1)
+    assert.match(h.styles[0], /left: 1.5mm/)
+    assert.equal(h.requests[0].config.body, JSON.stringify({ order: 1 }))
+    if (!silent) assert.equal(h.inventoryCalls(), 0)
+  }
+  const failed = await runtime(t, { silent: true, paper, failCss: true })
+  assert.equal((await failed.print({})).ok, false); assert.equal(failed.printed.length, 0); assert.equal(failed.windows[1].closed, true)
+  const off = await runtime(t, { beta: false, silent: true, paper })
+  assert.equal((await off.print({})).ok, true); assert.equal(off.styles.length, 0); assert.equal(off.printed[0].silent, false)
+})
+
+test('paper IPC: validates local origin, preserves modes/identity on save and isolates other profiles', async t => {
+  const h = await runtime(t, { silent: true }); h.open()
+  const event = { sender: h.windows[1].webContents, senderFrame: h.windows[1].webContents.mainFrame }
+  const invoke = (method, value) => h.handlers[`beta-printers:${method}`](event, value)
+  const before = (await invoke('getStatus')).data; const id = before.profiles[0].id
+  const paper = { ...require('../paper').defaults(), source: 'custom', heightMm: 152.4 }
+  assert.equal((await invoke('savePaper', { id, paper: { ...paper, widthMm: -1 } })).ok, false)
+  const saved = await invoke('savePaper', { id, paper }); assert.equal(saved.ok, true)
+  assert.deepEqual(saved.data.profiles[0].paper, paper)
+  assert.equal(saved.data.profiles[0].silentEnabled, true); assert.deepEqual(saved.data.profiles[0].identity, identity)
+  assert.deepEqual(saved.data.profiles[1], before.profiles[1])
+  const renamed = await invoke('saveProfile', { id, label: 'Mi perfil', identity })
+  assert.deepEqual(renamed.data.profiles.find(p => p.id === id).paper, paper)
+  await assert.rejects(h.handlers['beta-printers:savePaper'](h.event, { id, paper }), /Origen/)
+  assert.equal((await invoke('calibrateProfile', { id, confirmed: false })).ok, false)
+})
+
+test('calibration: native confirmation, one non-silent page to saved device, modes unchanged', async t => {
+  const paper = { ...require('../paper').defaults(), source: 'custom', widthMm: 80, heightMm: 100 }
+  for (const response of [0, 1]) {
+    const h = await runtime(t, { silent: true, paper, calibrationResponse: response }); h.open()
+    const event = { sender: h.windows[1].webContents, senderFrame: h.windows[1].webContents.mainFrame }
+    const status = () => h.handlers['beta-printers:getStatus'](event)
+    const before = (await status()).data
+    const result = await h.handlers['beta-printers:calibrateProfile'](event, { id: before.profiles[0].id, confirmed: true })
+    assert.equal(result.ok, true)
+    if (!response) { assert.equal(result.data.cancelled, true); assert.equal(h.printed.length, 0) }
+    else {
+      assert.equal(result.data.success, true); assert.equal(h.printed.length, 1)
+      assert.equal(h.printed[0].silent, false); assert.equal(h.printed[0].deviceName, 'Labels'); assert.equal(h.printed[0].copies, 1)
+      assert.deepEqual(h.printed[0].pageRanges, [{ from: 0, to: 0 }]); assert.deepEqual(h.printed[0].pageSize, { width: 80000, height: 100000 })
+      assert.match(decodeURIComponent(h.windows[2].lastUrl), /20 × 20 mm/); assert.equal(h.windows[2].closed, true)
+    }
+    assert.deepEqual((await status()).data, before)
+  }
 })
