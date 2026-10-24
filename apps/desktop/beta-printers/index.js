@@ -3,6 +3,7 @@ const { pathToFileURL } = require('node:url')
 const { randomUUID } = require('node:crypto')
 const { Store, resolve, validIdentity, text } = require('./core')
 const { inventory } = require('./inventory')
+const { silentOptions } = require('./silent')
 const same = (a, b) => ['name', 'driver', 'port', 'pnp', 'serial'].every(k => a[k] === b[k])
 const escape = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
@@ -15,7 +16,18 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     getStatus: () => status(),
     setEnabled(value) {
       if (typeof value !== 'boolean') throw Error('Activación inválida')
-      return store.write({ ...store.read(), enabled: value })
+      return store.write({ ...store.read(), enabled: value, ...(!value ? { silentEnabled: false } : {}) })
+    },
+    async setSilentSettings(value) {
+      if (!value || typeof value.enabled !== 'boolean' || !text(value.profileId, 64)) throw Error('Ajuste inválido')
+      const state = store.read()
+      const next = { ...state, silentEnabled: value.enabled, silentProfileId: value.profileId }
+      if (value.enabled) {
+        const result = await inventory(window.webContents)
+        silentOptions(next, result.printers)
+        if (store.read() !== state) throw Error('Configuración modificada; vuelva a intentarlo')
+      }
+      return store.write(next)
     },
     async refresh() { return inventory(window.webContents) },
     saveProfile(value) {
@@ -59,7 +71,7 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
       try {
         if (!['getStatus', 'setEnabled'].includes(method) && !store.read().enabled) throw Error('BETA desactivada')
         return { ok: true, data: await handler(value) }
-      } catch { return { ok: false, error: 'Operación rechazada. Revise los datos, habilitación BETA, permisos y coincidencia del dispositivo; si es ambiguo, verifique manualmente en Windows.' } }
+      } catch (error) { return { ok: false, error: method === 'setSilentSettings' && error.message.startsWith('Impresión sin diálogo') ? error.message : 'Operación rechazada. Revise los datos, habilitación BETA, permisos y coincidencia del dispositivo; si es ambiguo, verifique manualmente en Windows.' } }
     })
   }
   // The remote shell can only open our local window. Configuration IPC remains local.
@@ -80,10 +92,21 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     window.on('closed', () => { window = null })
     window.loadFile(path.join(__dirname, 'index.html'))
   }
-  return function attach(shell) {
+  function attach(shell) {
     if (shell.webContents) authorizedShells.add(shell.webContents)
     shell.setMenu(Menu.buildFromTemplate([{ label: '⚙ Impresoras BETA', submenu: [{ label: 'Configurar perfiles locales…', click: open }] }]))
     shell.setMenuBarVisibility(true)
   }
+  attach.getPrintOptions = async (event) => {
+    const state = store.read()
+    if (!state.enabled || !state.silentEnabled) return {}
+    let allowedOrigin = false
+    try { allowedOrigin = new URL(event.senderFrame.url).origin === 'https://ivoolve-print-frontend.vercel.app' } catch {}
+    if (!authorizedShells.has(event.sender) || event.senderFrame !== event.sender.mainFrame || !allowedOrigin) throw Error('Origen no autorizado para impresión sin diálogo')
+    const result = await inventory(event.sender)
+    if (store.read() !== state) throw Error('Configuración modificada durante la impresión. Vuelva a enviar el trabajo.')
+    return silentOptions(state, result.printers)
+  }
+  return attach
 }
 module.exports = { register }

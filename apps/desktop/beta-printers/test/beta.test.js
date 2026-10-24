@@ -70,12 +70,13 @@ test('IPC: exact local frame only; off means no inventory; profiles validation; 
   assert.equal((await h.invoke('testPrint', { confirmed: false, identity })).ok, false)
   assert.equal((await h.invoke('testPrint', { confirmed: true, identity: { ...identity, driver: '', port: '', pnp: '' } })).ok, false)
 })
-test('regression: legacy print handler and original print bridge unchanged', () => {
+test('regression: dialog path preserves legacy HTML, payload, margins and callback logic', () => {
   const root = path.resolve(__dirname, '../../../..')
   const baseline = execFileSync('git', ['show', 'e1a758cebdf2a77e1653010e2d747fd8043776a8:apps/desktop/main.js'], { cwd: root, encoding: 'utf8' })
   const current = fs.readFileSync(path.join(root, 'apps/desktop/main.js'), 'utf8')
   const handler = s => s.slice(s.indexOf("ipcMain.handle('print-labels'"), s.indexOf('app.whenReady()'))
-  assert.equal(handler(current), handler(baseline))
+  const withoutOptIn = handler(current).replace('    const printerOptions = await attachBetaPrinters.getPrintOptions(_event)\n\n', '').replace('          ...printerOptions,\n', '')
+  assert.equal(withoutOptIn, handler(baseline))
   assert.ok(fs.readFileSync(path.join(root, 'apps/desktop/preload.js'), 'utf8').startsWith(execFileSync('git', ['show', 'e1a758cebdf2a77e1653010e2d747fd8043776a8:apps/desktop/preload.js'], { cwd: root, encoding: 'utf8' })))
 })
 test('test print: native cancellation, one page non-silent, single in-flight request', async t => {

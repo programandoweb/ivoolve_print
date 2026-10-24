@@ -39,6 +39,8 @@ ipcMain.handle('print-labels', async (_event, payload) => {
       }
     }
 
+    const printerOptions = await attachBetaPrinters.getPrintOptions(_event)
+
     const printWindow = new BrowserWindow({
       show: false,
       webPreferences: {
@@ -56,6 +58,7 @@ ipcMain.handle('print-labels', async (_event, payload) => {
           margins: {
             marginType: 'none',
           },
+          ...printerOptions,
         },
         (success, errorType) => {
           printWindow.close()

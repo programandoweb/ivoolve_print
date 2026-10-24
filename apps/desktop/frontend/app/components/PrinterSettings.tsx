@@ -56,7 +56,7 @@ export default function PrinterSettings() {
           <button type="button" aria-label="Cerrar configuración" onClick={() => dialog.current?.close()} className="rounded-lg p-2 hover:bg-slate-100"><FiX size={20} /></button>
         </div>
         <p className="mt-4 text-sm leading-6" role="status">{message}</p>
-        <p className="mt-3 text-sm leading-6">En escritorio: abre este engranaje, activa BETA y asigna los perfiles Etiquetas, Membretes o Despachos. La impresión habitual conserva su diálogo de selección.</p>
+        <p className="mt-3 text-sm leading-6">En escritorio: abre este engranaje, activa BETA y asigna los perfiles Etiquetas, Membretes o Despachos. En escritorio puedes activar o desactivar la impresión sin cuadro de diálogo.</p>
         <button type="button" onClick={() => dialog.current?.close()} className="mt-5 rounded-xl bg-pink-500 px-4 py-2 text-sm font-semibold text-white hover:bg-pink-600">Entendido</button>
       </dialog>
     </>

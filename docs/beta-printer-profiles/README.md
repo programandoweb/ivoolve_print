@@ -14,8 +14,10 @@ El montaje inicial modifica `apps/desktop/main.js`: importación y
 registro del módulo, más montaje del menú nativo visible «⚙ Impresoras BETA».
 El cambio de visibilidad de este menú es deliberado para garantizar acceso real
 sin inyectar código en el sitio remoto. No cambia la URL ni su navegación.
-El handler completo `print-labels`, su puente `window.api.print`, Socket.IO, API
-y plantillas quedan idénticos. No se modificó `ivoolveFlow`.
+El puente `window.api.print`, Socket.IO, API y plantillas quedan idénticos.
+La fase opcional sin diálogo añade al handler `print-labels` una consulta local
+de opciones y su aplicación a la llamada Electron; el resto del handler permanece
+igual. Con el check desmarcado, las opciones efectivas son las originales. No se modificó `ivoolveFlow`.
 
 ## Ejecución y activación
 
@@ -38,11 +40,13 @@ El API local que usa la impresión tradicional debe seguir operando como antes.
 4. Asignar colas a Etiquetas, Membretes o Despachos; crear, renombrar, desvincular
    y eliminar perfiles sin alterar otras configuraciones.
 5. Guardar explícitamente una nueva asociación tras revisar cambios de cola/puerto.
-6. Desactivar el interruptor para dejar de usar BETA; los perfiles se conservan.
+6. Para imprimir sin diálogo, elegir el perfil en «Perfil para las etiquetas» y
+   marcar «Imprimir sin cuadro de diálogo». Desmarcarlo restaura el selector Windows.
+7. Desactivar BETA conserva los perfiles y desmarca también la impresión sin diálogo.
 
 Desactivada, no enumera impresoras ni ejecuta PowerShell. La configuración se
-lee de forma diferida al abrir la ventana. No existen timers, suscripciones de
-hardware ni integración con trabajos normales. La persistencia de la activación
+lee al abrir la ventana o al recibir el primer trabajo para determinar su modo. No existen timers ni suscripciones de hardware. Con el check OFF, los trabajos
+normales no consultan el inventario de impresoras. La persistencia de la activación
 es local; no hay variable de entorno que la active inadvertidamente.
 
 ## Arquitectura y límites
@@ -60,7 +64,8 @@ es local; no hay variable de entorno que la active inadvertidamente.
   exacta del documento local. Impide navegación, popups y webviews de la ventana.
   El frontend remoto solo puede abrir esta ventana mediante un launcher separado.
   Inventario, perfiles y pruebas mantienen IPC exclusivo del documento local.
-  Todo efecto de configuración BETA requiere activación.
+  Todo efecto de configuración BETA requiere activación. El modo sin diálogo
+  valida además el remitente registrado y el origen Vercel antes de elegir destino.
 - `preload.js`: puente exclusivo de la ventana local, sin ipcRenderer genérico.
 - `index.html`, `style.css`, `ui.js`: UI local con CSP sin red ni código inline,
   contenido de impresoras insertado mediante textContent; perfiles en ancho completo.
@@ -96,8 +101,8 @@ preferencias/destino: debe verificar allí la misma cola y una copia. El program
 no puede garantizar cambios que el usuario haga dentro del diálogo del driver.
 Solo una prueba puede estar en curso. Una prueba ya entregada a Windows puede
 finalizar aunque se cierre la pantalla; deshabilitar BETA no cancela el spooler.
-Nunca se invoca la prueba desde sockets ni se consumen estos perfiles al imprimir
-etiquetas normales. No hay impresión silenciosa, agentes ni cambios de drivers.
+La prueba de identificación nunca se invoca desde sockets y sigue con diálogo
+incluso cuando el modo sin diálogo está activado. No hay agentes ni cambios de drivers.
 
 ## Validación reproducible
 
@@ -112,8 +117,11 @@ Las pruebas cubren identidad/collisiones, nombres mutables, corrupción/reinicio
 esquema inválido/escritura fallida, fallback CIM, IPC con origen/frame falsos,
 modo OFF sin inventario, CRUD, confirmación/cancelación, ambigüedad, una prueba
 concurrente, cambio a OFF durante confirmación, una página no silenciosa y
-comparación byte a byte del handler legado y preservación del puente de impresión
-original contra baseline. También se prueba que el launcher acepte únicamente el
+comparación del handler contra baseline excluyendo únicamente las dos adiciones
+para opciones de impresión, y preservación del puente original. Se prueba también
+el handler real con dobles Electron: modo con/sin diálogo, payload y márgenes,
+cola seleccionada, errores sin reintentos ni ventanas innecesarias, migración de
+preferencias, persistencia del check y rechazo de destinos ambiguos/offline. También se prueba que el launcher acepte únicamente el
 shell registrado, su frame principal y el origen HTTPS exacto de Vercel, y que ese
 remitente siga sin acceso al IPC de configuración.
 
@@ -137,7 +145,9 @@ Antes de uso operativo, verificar en Windows:
   ambigüedad sin reasignación, revinculación manual y prueba bloqueada si ambigua.
 - Una prueba con cola inequívoca: cancelar ambos diálogos y luego confirmar;
   verificar físicamente destino, página y copias.
-- Impresión habitual desde app y sockets conserva selector/layout/ack.
+- Check desmarcado: impresión desde app y sockets conserva selector/layout/ack.
+- Check marcado: impresión directa al perfil elegido sin selector; comprobar
+  destino físico, desconexión, ambigüedad, desmarcar y reiniciar.
 - Archivo corrupto no impide iniciar ni imprimir con el flujo tradicional.
 
 ## Acceso desde el frontend de Vercel
@@ -161,3 +171,35 @@ Para abrir la configuración mediante él también debe actualizarse/reiniciarse
 Electron (incluye cambios en preload y registro IPC). Recargar Vercel no actualiza
 el binario ni el proceso Electron instalado. El estado del despliegue Vercel debe
 confirmarse en la plataforma; un push no acredita por sí solo un despliegue.
+
+## Impresión sin cuadro de diálogo (activación independiente)
+
+Autorización posterior a la fase de inventario: el operador dispone de un check
+local persistente «Imprimir sin cuadro de diálogo» y un selector de perfil.
+Por defecto está OFF, también al cargar el esquema v1 anterior, sin perder
+perfiles. No basta con habilitar BETA: hay que elegir un perfil vinculado y
+marcar el check. La configuración solo puede cambiarse desde la ventana local.
+
+El endpoint actual solo produce etiquetas: todos los trabajos que atraviesen
+`print-labels` (manuales y recibidos por el flujo existente) usan el perfil elegido
+cuando el modo está ON. No se inventa una clasificación Etiquetas/Membretes/Despachos
+a partir del payload. La selección se guarda por ID del perfil, permitiendo renombrarlo.
+
+`silent.js` resuelve conservadoramente la asociación; al activar y en cada trabajo
+sin diálogo se vuelve a consultar el inventario. No se enumera por trabajo si el
+check está OFF. La llamada de impresión original recibe únicamente los overrides
+`silent: true` y `deviceName` desde el perfil local. API HTML, payload, márgenes,
+layout, callback y ACK permanecen iguales. Si no hay perfil/cola inequívoca o
+Windows informa offline, se devuelve error sin imprimir, sin fallback a la
+predeterminada ni apertura automática del diálogo y sin reintento que duplique
+el trabajo. Desactivar BETA desarma también el check; reactivarla no lo rearma.
+
+Cambios de configuración durante la enumeración abortan el trabajo para evitar
+un destino obsoleto. Un trabajo ya aceptado por Electron/Windows no se cancela
+por desmarcar después el check. El estado físico online no está garantizado
+cuando Windows no lo expone. Dos colas iguales sin serial siguen siendo ambiguas
+y no permiten activar el modo sin diálogo. No se infiere identidad física de
+USB003 o del nombre de cola. Este modo requiere validación física en Windows.
+
+Para recibir el check es necesario actualizar el repositorio local y reiniciar
+Electron; el despliegue de Vercel por sí solo no cambia el código local.

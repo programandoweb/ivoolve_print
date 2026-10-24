@@ -31,6 +31,7 @@ async function refresh() {
   renderProfiles()
 }
 function renderProfiles() {
+  renderSilentSettings()
   $('profiles').replaceChildren()
   for (const profile of state.profiles) {
     const row = el('div'); row.className = 'row'
@@ -47,6 +48,24 @@ function renderProfiles() {
     row.append(label, select, save, unlink, remove, el('p', `${resolution(profile.identity)}${profile.identity ? ' · Cola guardada: ' + profile.identity.name : ''}`)); $('profiles').append(row)
   }
 }
+function renderSilentSettings() {
+  $('silent').checked = Boolean(state.silentEnabled)
+  $('silent-profile').replaceChildren()
+  const empty = el('option', 'Seleccione un perfil vinculado'); empty.value = ''; $('silent-profile').append(empty)
+  for (const profile of state.profiles) {
+    const option = el('option', profile.label + (profile.identity ? ' · ' + profile.identity.name : ' · Sin vincular'))
+    option.value = profile.id; option.disabled = !profile.identity; $('silent-profile').append(option)
+  }
+  $('silent-profile').value = state.silentProfileId || ''
+  $('silent-status').textContent = state.silentEnabled ? 'Sin diálogo ACTIVADO. Destino: ' + (state.profiles.find(p => p.id === state.silentProfileId)?.label || 'Perfil eliminado: revise configuración') : 'Con diálogo Windows (modo habitual).'
+}
+async function saveSilentSettings() {
+  try {
+    state = await call('setSilentSettings', { enabled: $('silent').checked, profileId: $('silent-profile').value })
+  } finally { renderSilentSettings() }
+}
+$('silent').onchange = () => run(saveSilentSettings)
+$('silent-profile').onchange = () => run(saveSilentSettings)
 $('enabled').onchange = () => run(async () => { try { await call('setEnabled', $('enabled').checked) } finally { await load() } })
 $('refresh').onclick = () => run(refresh)
 $('new').onsubmit = event => { event.preventDefault(); run(async () => { state = await call('saveProfile', { id: '', label: $('label').value, identity: null }); $('label').value = ''; renderProfiles() }) }
