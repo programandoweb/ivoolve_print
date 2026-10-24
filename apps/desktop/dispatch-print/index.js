@@ -48,7 +48,7 @@ function register({ BrowserWindow, ipcMain, protocol, net, profiles, fetchImpl =
     else job.resolve({ pages: result.pages, scaled: result.scaled })
     return true
   })
-  ipcMain.handle('dispatch-print:run', async (event, value) => {
+  const run = async (event, value) => {
     authorize(event)
     if (pending.has(event.sender)) return { ok: false, error: 'Ya hay un membrete en proceso. Espera a que finalice.' }
     pending.add(event.sender)
@@ -95,7 +95,10 @@ function register({ BrowserWindow, ipcMain, protocol, net, profiles, fetchImpl =
       if (printWindow) { jobs.delete(printWindow.webContents); if (!printWindow.isDestroyed()) printWindow.close() }
       pending.delete(event.sender)
     }
-  })
-  return shell => shells.add(shell.webContents)
+  }
+  ipcMain.handle('dispatch-print:run', run)
+  const attach = shell => shells.add(shell.webContents)
+  attach.run = run
+  return attach
 }
 module.exports = { registerScheme, register, assetPath }

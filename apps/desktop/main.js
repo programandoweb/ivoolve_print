@@ -2,9 +2,11 @@ const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
 const { register: registerBetaPrinters } = require('./beta-printers')
 const dispatchPrint = require('./dispatch-print')
+const prismaAgent = require('./prisma-agent')
 dispatchPrint.registerScheme(require('electron').protocol)
 let attachDispatchPrinting
 let attachBetaPrinters
+let attachPrisma
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -19,11 +21,12 @@ function createWindow() {
   })
   attachBetaPrinters(win)
   attachDispatchPrinting(win)
+  attachPrisma(win)
   //win.loadURL('http://localhost:3030')
   win.loadURL('https://ivoolve-print-frontend.vercel.app')
 }
 
-ipcMain.handle('print-labels', async (_event, payload) => {
+async function printLabels(_event, payload) {
   try {
     const response = await fetch('http://localhost:3031/api/print/labels', {
       method: 'POST',
@@ -95,10 +98,12 @@ ipcMain.handle('print-labels', async (_event, payload) => {
       message: error?.message || 'Error interno al imprimir',
     }
   }
-})
+}
+ipcMain.handle('print-labels', printLabels)
 
 app.whenReady().then(() => {
   attachBetaPrinters = registerBetaPrinters({ app, BrowserWindow, ipcMain, ...require('electron') })
   attachDispatchPrinting = dispatchPrint.register({ ...require('electron'), profiles: attachBetaPrinters })
+  attachPrisma = prismaAgent.register({ ipcMain, profiles: attachBetaPrinters, printLabels, printLetterhead: attachDispatchPrinting.run })
   createWindow()
 })

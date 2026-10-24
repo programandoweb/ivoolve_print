@@ -19,6 +19,7 @@ import ProductionStats from './ProductionStats'
 import ProductionHeader from './ProductionHeader'
 import ProductionActions from './ProductionActions'
 import LetterheadSearch from './LetterheadSearch'
+import PrismaAssistant from '@/modules/prisma/PrismaAssistant'
 import RequisitionAutocomplete from './RequisitionAutocomplete'
 import useRequisitionCache from '@/hooks/useRequisitionCache'
 import SearchMethodTabs, {
@@ -558,6 +559,8 @@ export default function Page() {
       <h1 className="mb-8 text-center text-2xl font-bold text-slate-800">
         Lista de órdenes
       </h1>
+
+      <PrismaAssistant token={user?.token} />
 
       {!data && (
         <form onSubmit={handleSubmit} className="mx-auto mb-8 flex w-full max-w-xl flex-col">
