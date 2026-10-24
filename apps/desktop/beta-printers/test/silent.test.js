@@ -104,3 +104,55 @@ test('local IPC: toggles persist, invalid activation rejected, beta OFF disarms 
   assert.equal((await invoke('getStatus')).data.silentEnabled, false)
   await assert.rejects(h.handlers['beta-printers:setSilentSettings'](h.event, { enabled: true, profileId: old.profiles[0].id }), /Origen/)
 })
+
+test('identical models: explicit queue confirmation, immutable binding, no inferred physical serial', () => {
+  const a = { ...identity, driver: 'ZD220', port: 'USB003', pnp: 'INSTANCE-ONE' }
+  const b = { ...a, name: 'Labels Copy 1', port: 'USB004', pnp: 'INSTANCE-TWO' }
+  const printers = [{ identity: a }, { identity: b }]
+  const configured = { ...state, profiles: [{ ...state.profiles[0], identity: a }] }
+  assert.throws(() => silentOptions(configured, printers), error => error.code === 'QUEUE_CONFIRMATION_REQUIRED')
+  const approved = { ...configured, silentQueueConfirmation: a }
+  assert.deepEqual(silentOptions(approved, printers), { silent: true, deviceName: a.name })
+  for (const key of ['name', 'driver', 'port', 'pnp']) {
+    assert.throws(() => silentOptions(approved, [{ identity: { ...a, [key]: 'CHANGED' } }, { identity: b }]))
+  }
+  assert.throws(() => silentOptions(approved, [{ identity: a }, { identity: a }]), /ambigua/)
+  assert.throws(() => silentOptions(approved, [{ identity: a }, { identity: { ...b, name: a.name } }]), /ambigua/)
+  assert.throws(() => silentOptions({ ...approved, silentQueueConfirmation: b }, printers), error => error.code === 'QUEUE_CONFIRMATION_REQUIRED')
+  assert.throws(() => silentOptions(approved, [{ identity: a, status: 'offline (CIM)' }, { identity: b }]), /fuera de línea/)
+})
+
+test('manual queue IPC: native cancel, accept, revalidation, persistence, disarm and rebind', async t => {
+  const dir = temp(t); const store = new Store(dir); const initial = store.read()
+  const a = { ...identity, driver: 'ZD220', port: 'USB003', pnp: 'INSTANCE-ONE' }
+  const b = { ...a, name: 'Labels Copy 1', port: 'USB004', pnp: 'INSTANCE-TWO' }
+  let rows = [{ identity: a }, { identity: b }]; let response = 0; let confirmations = 0; let opened; let launch
+  store.write({ ...initial, enabled: true, profiles: initial.profiles.map((p, i) => i ? p : { ...p, identity: a }) })
+  const handlers = {}
+  class Window {
+    constructor() { opened = this; this.webContents = { mainFrame: {}, setWindowOpenHandler() {}, on() {} } }
+    on() {} loadFile(file) { this.webContents.mainFrame.url = require('node:url').pathToFileURL(file).href } isDestroyed() { return false } focus() {}
+  }
+  const entry = path.resolve(__dirname, '../index.js'); const exports = { exports: {} }; const nativeRequire = require('node:module').createRequire(entry)
+  vm.runInNewContext(fs.readFileSync(entry, 'utf8'), { __dirname: path.dirname(entry), module: exports, URL, require: name => name === './inventory' ? { inventory: async () => ({ printers: rows }) } : nativeRequire(name) })
+  const attach = exports.exports.register({ app: { getPath: () => dir }, BrowserWindow: Window, Menu: { buildFromTemplate: items => { launch = items[0].submenu[0].click } }, ipcMain: { handle: (name, fn) => { handlers[name] = fn } }, dialog: { showMessageBox: async (_, options) => { confirmations++; assert.match(options.detail, /USB003/); assert.match(options.detail, /no un equipo físico/); return { response } } } })
+  const shell = { webContents: { mainFrame: { url: 'https://ivoolve-print-frontend.vercel.app/dashboard' } }, setMenu() {}, setMenuBarVisibility() {} }; attach(shell); launch()
+  const localEvent = { sender: opened.webContents, senderFrame: opened.webContents.mainFrame }
+  const shellEvent = { sender: shell.webContents, senderFrame: shell.webContents.mainFrame }
+  const invoke = (method, value) => handlers[`beta-printers:${method}`](localEvent, value)
+  const config = { enabled: true, profileId: initial.profiles[0].id }
+  const cancelled = await invoke('setSilentSettings', config)
+  assert.equal(cancelled.data.silentEnabled, false); assert.equal(confirmations, 1)
+  response = 1
+  const accepted = await invoke('setSilentSettings', config)
+  assert.equal(accepted.ok, true); assert.equal(accepted.data.silentEnabled, true); assert.equal(confirmations, 2)
+  assert.equal(new Store(dir).read().silentQueueConfirmation.port, 'USB003')
+  assert.equal((await attach.getPrintOptions(shellEvent)).deviceName, a.name); assert.equal(confirmations, 2)
+  rows = [{ identity: { ...a, port: 'USB009' } }, { identity: b }]
+  await assert.rejects(attach.getPrintOptions(shellEvent), /no encontrada o ambigua/)
+  rows = [{ identity: a }, { identity: b }]
+  await invoke('saveProfile', { id: initial.profiles[0].id, label: 'Etiquetas', identity: b })
+  await assert.rejects(attach.getPrintOptions(shellEvent), /confirme manualmente/)
+  const disabled = await invoke('setEnabled', false)
+  assert.equal(disabled.data.silentQueueConfirmation, null); assert.equal(disabled.data.silentEnabled, false)
+})

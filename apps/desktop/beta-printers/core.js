@@ -18,10 +18,10 @@ function resolve(identity, printers) {
   return { state: exact.length === 1 ? 'probable' : 'not-found', candidates: exact }
 }
 function initial() {
-  return { version: 1, station: randomUUID(), enabled: false, silentEnabled: false, silentProfileId: '', updatedAt: new Date().toISOString(), profiles: ['Etiquetas', 'Membretes', 'Despachos'].map(label => ({ id: randomUUID(), label, identity: null })) }
+  return { version: 1, station: randomUUID(), enabled: false, silentEnabled: false, silentProfileId: '', silentQueueConfirmation: null, updatedAt: new Date().toISOString(), profiles: ['Etiquetas', 'Membretes', 'Despachos'].map(label => ({ id: randomUUID(), label, identity: null })) }
 }
 function validState(s) {
-  return s && s.version === 1 && text(s.station, 64) && typeof s.enabled === 'boolean' && (s.silentEnabled === undefined || typeof s.silentEnabled === 'boolean') && (s.silentProfileId === undefined || text(s.silentProfileId, 64)) && text(s.updatedAt, 64) && Array.isArray(s.profiles) && s.profiles.length <= 100 &&
+  return s && s.version === 1 && text(s.station, 64) && typeof s.enabled === 'boolean' && (s.silentEnabled === undefined || typeof s.silentEnabled === 'boolean') && (s.silentProfileId === undefined || text(s.silentProfileId, 64)) && (s.silentQueueConfirmation == null || validIdentity(s.silentQueueConfirmation)) && text(s.updatedAt, 64) && Array.isArray(s.profiles) && s.profiles.length <= 100 &&
     s.profiles.every(p => p && text(p.id, 64) && p.id.length && text(p.label, 80) && p.label.trim() && (p.identity === null || validIdentity(p.identity))) &&
     new Set(s.profiles.map(p => p.id)).size === s.profiles.length && new Set(s.profiles.map(p => p.label.trim().toLocaleLowerCase())).size === s.profiles.length
 }
@@ -36,7 +36,7 @@ class Store {
       const s = JSON.parse(fs.readFileSync(this.file, 'utf8'))
       if (!validState(s)) throw Error('invalid')
       // Additive v1 migration: existing bindings survive, silent mode starts OFF.
-      this.state = { ...s, silentEnabled: s.silentEnabled ?? false, silentProfileId: s.silentProfileId ?? '' }
+      this.state = { ...s, silentEnabled: s.silentEnabled ?? false, silentProfileId: s.silentProfileId ?? '', silentQueueConfirmation: s.silentQueueConfirmation ?? null }
     } catch (e) { if (e.code !== 'ENOENT') this.diagnostic = 'Configuración ilegible o incompatible. BETA desactivada; archivo original conservado hasta guardar un cambio explícito.' }
     return this.state
   }

@@ -41,12 +41,12 @@
         <section class="surface" aria-labelledby="mode-title">
           <div class="section-heading"><div class="flex items-center gap-3"><span class="section-icon" data-icon="bolt"></span><div><h2 id="mode-title">¿Cómo quieres imprimir?</h2><p class="muted">Elige el comportamiento de los trabajos de etiquetas.</p></div></div><span class="tag tag-neutral">ETIQUETAS</span></div>
           <div class="mode-grid"><label class="mode-choice"><input type="checkbox" id="silent"><span><strong>Imprimir sin cuadro de diálogo</strong><span class="block mt-1 text-sm text-slate-500">Envía las etiquetas directamente al perfil seleccionado.</span></span><span data-icon="bolt" class="ml-auto text-pink-500"></span></label><div><label class="field-label" for="silent-profile">Perfil de destino</label><select id="silent-profile" aria-label="Perfil para impresión sin diálogo"></select><p id="silent-status" class="mode-status" role="status"></p></div></div>
-          <div class="info-line"><span data-icon="info"></span><p>Desmarcado: se abre el selector de Windows. Si activas el modo sin diálogo y la impresora no se encuentra o es ambigua, el envío se detiene. Verifica el equipo físico antes de activarlo.</p></div>
+          <div class="info-line"><span data-icon="info"></span><p>Desmarcado: se abre el selector de Windows. Si hay equipos iguales, confirma la cola y el puerto de Windows. Esto no identifica físicamente la impresora por serial. Si cambia la vinculación o no se encuentra un destino válido, se detiene el envío.</p></div>
         </section>
         <section id="inventory" class="section-block" aria-labelledby="inventory-title">
           <div class="section-heading"><div><p class="eyebrow">DISPOSITIVOS</p><h2 id="inventory-title">Impresoras instaladas <span id="inventory-count" class="count-badge">0</span></h2><p class="muted">Consulta los dispositivos que reconoce este equipo.</p></div><button id="refresh" class="btn btn-secondary"><span data-icon="refresh"></span><span>Actualizar lista</span></button></div>
           <div id="printers" class="printer-grid"></div>
-          <p class="section-footnote"><span data-icon="info"></span> Dos equipos iguales sin serial fiable pueden ser ambiguos. No se reasignan perfiles automáticamente.</p>
+          <p class="section-footnote"><span data-icon="info"></span> Dos equipos iguales sin serial requieren verificación manual de la cola Windows. No se reasignan perfiles automáticamente.</p>
         </section>
         <section id="profile-section" class="section-block" aria-labelledby="profiles-title">
           <div class="section-heading"><div><p class="eyebrow">ASIGNACIONES</p><h2 id="profiles-title">Perfiles de impresión</h2><p class="muted">Guarda qué impresora corresponde a cada tarea.</p></div><span class="tag tag-neutral">GUARDADO LOCAL</span></div>

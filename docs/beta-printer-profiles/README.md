@@ -197,8 +197,9 @@ el trabajo. Desactivar BETA desarma también el check; reactivarla no lo rearma.
 Cambios de configuración durante la enumeración abortan el trabajo para evitar
 un destino obsoleto. Un trabajo ya aceptado por Electron/Windows no se cancela
 por desmarcar después el check. El estado físico online no está garantizado
-cuando Windows no lo expone. Dos colas iguales sin serial siguen siendo ambiguas
-y no permiten activar el modo sin diálogo. No se infiere identidad física de
+cuando Windows no lo expone. Dos colas iguales sin serial siguen siendo ambiguas respecto a su identidad
+física. Ahora pueden usarse sin diálogo tras confirmar manualmente una cola
+Windows y su puerto exactos; sin esa confirmación el modo sigue bloqueado. No se infiere identidad física de
 USB003 o del nombre de cola. Este modo requiere validación física en Windows.
 
 Para recibir el check es necesario actualizar el repositorio local y reiniciar
@@ -236,3 +237,32 @@ no acredita drivers, Electron nativo ni impresoras físicas en Windows.
 Para ver el nuevo diseño: actualizar el repositorio local y reiniciar Electron.
 No requiere redesplegar el frontend de Vercel ni reinstalar dependencias en una
 estación que ya ejecuta la aplicación.
+
+## Dos impresoras del mismo modelo: confirmación manual de cola Windows
+
+El bloqueo inicial consideraba ambiguo todo el modelo, incluso cuando el operador
+había seleccionado una cola concreta. La activación ahora permite ese caso con
+confirmación nativa explícita del perfil, nombre de cola, driver y puerto.
+Se informa que esto identifica una cola Windows, no una identidad física por serial.
+Cancelar no activa el check ni registra autorización.
+
+Requisitos: exactamente una coincidencia de nombre de cola, driver, puerto, PnP
+y serial guardados; nombre único en el inventario; driver y puerto no vacíos.
+No se usa el puerto solo como identificador. Tras confirmar se vuelve a consultar
+el inventario antes de guardar. La autorización local `silentQueueConfirmation`
+se conserva entre reinicios y solo sirve para esa misma huella de cola.
+Si cambia cualquier atributo de vinculación, desaparece, se duplica el destino
+o Windows informa offline, se bloquea el envío y se exige revisar/revincular.
+Desmarcar el modo o desactivar BETA elimina esa confirmación.
+
+Si dos equipos se intercambian físicamente sin que cambie ningún atributo visible
+para Windows, el software no puede detectar el intercambio: el operador debe
+verificar nuevamente la cola y el equipo. La UI muestra «Cola confirmada», no
+«Identidad física verificada». La prueba de identificación BETA conserva sus
+restricciones previas; use la página de prueba Windows para verificar colas del
+mismo modelo antes de confirmar este modo.
+
+Pruebas adicionales: autorización requerida, destino correcto confirmado,
+confirmación cancelada/aceptada, persistencia, rechazo ante cambios de
+nombre/driver/puerto/PnP, colisiones, offline y revinculación. Total: 15 pruebas
+automatizadas aprobadas con dobles; validación física Windows sigue pendiente.

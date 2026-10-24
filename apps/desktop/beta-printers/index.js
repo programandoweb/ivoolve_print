@@ -16,15 +16,29 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     getStatus: () => status(),
     setEnabled(value) {
       if (typeof value !== 'boolean') throw Error('Activación inválida')
-      return store.write({ ...store.read(), enabled: value, ...(!value ? { silentEnabled: false } : {}) })
+      return store.write({ ...store.read(), enabled: value, ...(!value ? { silentEnabled: false, silentQueueConfirmation: null } : {}) })
     },
     async setSilentSettings(value) {
       if (!value || typeof value.enabled !== 'boolean' || !text(value.profileId, 64)) throw Error('Ajuste inválido')
       const state = store.read()
-      const next = { ...state, silentEnabled: value.enabled, silentProfileId: value.profileId }
+      const next = { ...state, silentEnabled: value.enabled, silentProfileId: value.profileId, silentQueueConfirmation: null }
       if (value.enabled) {
         const result = await inventory(window.webContents)
-        silentOptions(next, result.printers)
+        try { silentOptions(next, result.printers) } catch (error) {
+          if (error.code !== 'QUEUE_CONFIRMATION_REQUIRED') throw error
+          const profile = next.profiles.find(p => p.id === next.silentProfileId)
+          const selected = profile.identity
+          const choice = await dialog.showMessageBox(window, {
+            type: 'warning', buttons: ['Cancelar', 'Confirmar esta cola'], defaultId: 0, cancelId: 0,
+            message: 'Hay impresoras del mismo modelo. Confirme la cola Windows.',
+            detail: `Perfil: ${profile.label}\nCola: ${selected.name}\nDriver: ${selected.driver}\nPuerto: ${selected.port}\n\nEsta confirmación identifica la cola, no un equipo físico por serial. Verifique en Windows que esa cola imprime en el equipo deseado. Si intercambia equipos o cables sin cambios visibles para Windows, deberá verificarlo de nuevo. ¿Autoriza los envíos sin diálogo a esta cola?`,
+          })
+          if (store.read() !== state) throw Error('Configuración modificada; vuelva a intentarlo')
+          if (choice.response !== 1) return state
+          next.silentQueueConfirmation = { ...selected }
+          const current = await inventory(window.webContents)
+          silentOptions(next, current.printers)
+        }
         if (store.read() !== state) throw Error('Configuración modificada; vuelva a intentarlo')
       }
       return store.write(next)

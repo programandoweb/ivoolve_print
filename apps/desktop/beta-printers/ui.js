@@ -34,9 +34,10 @@ async function call(method, value) {
   return result.data
 }
 async function run(action) { try { $('message').textContent = ''; await action() } catch (e) { $('message').textContent = e.message } }
-function resolution(identity) {
+function resolution(identity, profileId) {
   if (!identity) return { label: 'Sin vincular', className: 'tag tag-neutral' }
   const matches = printers.filter(p => p.identity.driver === identity.driver)
+  if (matches.length > 1 && profileId === state.silentProfileId && state.silentQueueConfirmation && ['name', 'driver', 'port', 'pnp', 'serial'].every(k => state.silentQueueConfirmation[k] === identity[k]) && matches.filter(p => ['name', 'driver', 'port', 'pnp', 'serial'].every(k => p.identity[k] === identity[k])).length === 1) return { label: 'Cola confirmada', className: 'tag tag-warning' }
   if (matches.length > 1) return { label: 'Ambigua', className: 'tag tag-warning' }
   if (matches.some(p => ['name', 'port', 'pnp'].every(k => p.identity[k] === identity[k]))) return { label: 'Probable · Sin serial', className: 'tag tag-warning' }
   return { label: 'No encontrada', className: 'tag tag-warning' }
@@ -84,7 +85,7 @@ function renderProfiles() {
     const row = el('article', null, 'profile-card'); const heading = el('div', null, 'profile-heading')
     const title = el('div', null, 'flex items-center gap-2'); const tile = el('span', null, 'icon-tile'); tile.append(icon('layers'))
     title.append(tile, el('h3', profile.label, 'text-sm font-semibold text-slate-700'))
-    const match = resolution(profile.identity); heading.append(title, el('span', match.label, match.className))
+    const match = resolution(profile.identity, profile.id); heading.append(title, el('span', match.label, match.className))
     const label = el('input'); label.value = profile.label; label.maxLength = 80
     const select = el('select'); select.setAttribute('aria-label', `Impresora de ${profile.label}`)
     const empty = el('option', 'Selecciona una impresora'); empty.value = ''; select.append(empty)
