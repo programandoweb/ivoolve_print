@@ -3,7 +3,7 @@ export type Candidate = { id: number; number: string; kind: string; name: string
 export type JobResult = Command & { ok: boolean; message: string }
 export type PrismaAgentStatus = { slug: string; name: string; enabled: boolean; available: boolean; configured: boolean; provider: string; model: string; reason: string | null }
 export type PrismaResult = {
-  ok: boolean; error?: string; message?: string; agent?: PrismaAgentStatus
+  ok: boolean; error?: string; message?: string; agent?: PrismaAgentStatus; reset_context?: boolean
   status?: 'interpreted' | 'choose' | 'completed' | 'stopped' | 'cancelled' | 'available' | 'unavailable'
   commands?: Command[]; requires_confirmation?: boolean; plan_token?: string; expires_at?: number
   candidates?: Candidate[]; number?: string; results?: JobResult[]; remaining?: number
