@@ -1,34 +1,23 @@
 # Prisma · Asistente de impresión
 
-Prisma está disponible desde el dashboard de Ivoolve Print, dentro de Electron. Solo prepara etiquetas por código de etiqueta y cantidad explícita, y membretes por número diario de despacho de hoy (America/Bogota).
-
-## Uso
-
-- «Imprime 3 etiquetas del código 123».
-- «Imprime el membrete 02».
-- «Imprime los membretes 02 y 03»: exige revisar la lista y pulsar Imprimir.
-- Si falta información, responde en el mismo chat. Las solicitudes aclaradas requieren confirmación.
-- Si hay varios despachos del mismo número, selecciona uno. El resto de la solicitud espera; Cancelar pendientes conserva el estado de los trabajos ya enviados.
-
-Cada documento utiliza su perfil actual: destino, activación, medidas, calibración y modo silencioso. Un perfil inválido detiene el proceso; no se selecciona otra impresora ni se reintenta automáticamente. Un envío exitoso indica aceptación por la cola, no salida física del papel.
+Prisma está integrado en el dashboard de Ivoolve Print y el controlador Electron, con configuración persistente aislada en Laravel. La pantalla administrativa es `/dashboard/agents/prisma` en IvoolveFlow (requiere permiso `agents.catalog.manage`).
 
 ## Instalación
+1. Desplegar IvoolveFlow (`/var/www/deploy-ivoolve-flow.sh`) y ejecutar la migración aditiva `2026_10_24_150000_create_printing_agent_settings_table.php` con `php artisan migrate --force` en backend; comprobar rutas y permisos.
+2. Confirmar `GEMINI_API_KEY` y caché persistente compartida. Abrir Prisma en administración, revisar el modelo y pulsar **Probar conexión real**. Credencial y errores del proveedor nunca se entregan al frontend.
+3. Actualizar Electron (`git pull --ff-only origin main && npm ci`) y reiniciar desde los scripts existentes; actualizar el frontend remoto mediante su despliegue habitual Vercel.
+4. En cada estación Windows, comprobar los perfiles Etiquetas y Membretes, la cola seleccionada y el modo silencioso. **No se ejecuta ningún trabajo físico automáticamente al instalar.**
 
-1. Desplegar primero el cambio de `ivoolveFlow` descrito en `docs/printing-agent/README.md`.
-2. Actualizar este repositorio: `git pull --ff-only origin main`.
-3. Ejecutar `npm ci` y reiniciar con `npm exec --workspace=desktop -- electron .`.
-4. Esperar el despliegue del frontend en Vercel y comprobar ambos perfiles en la estación Windows.
+## Uso
+- «Imprime 3 etiquetas del código 123».
+- «Imprime el membrete 02».
+- «Imprime los membretes 02 y 03»: confirmar la lista.
+- Si hay coincidencias múltiples, elegir una; cancelar no repite trabajos emitidos.
 
-Prisma necesita el backend Laravel actualizado, su configuración Gemini existente y caché persistente compartida entre trabajadores PHP. No introduce variables de entorno, migraciones ni dependencias nuevas. El servicio local de etiquetas en `localhost:3031` debe seguir funcionando como en la búsqueda manual.
+El mensaje "enviado a la cola" no certifica salida física. Ante timeout o resultado incierto, revisar el spooler antes de enviar otra orden. La impresión manual sigue disponible aunque Prisma esté desactivado o falle Gemini.
 
-## Aislamiento y recuperación
+## Aislamiento
+`apps/desktop/prisma-agent` conserva las únicas dos clases de trabajo y el puente IPC por ventana/origen, y no reconfigura otros agentes. El estado se obtiene mediante GET autenticado a `/api/v1/printing-agent/status`. Perfil, medidas y orientación se determinan exclusivamente por los handlers Electron ya existentes.
 
-El módulo nuevo reside en `apps/desktop/prisma-agent/` y `frontend/modules/prisma/`. Reutiliza los handlers existentes de etiquetas y PDF; no cambia sus plantillas. El puente IPC acepta solo la ventana principal registrada y el origen HTTPS autorizado. El modelo no recibe credenciales ni controla URLs, dispositivos o código.
-
-Los planes duran dos minutos, pertenecen al usuario y se reclaman una sola vez antes de imprimir. Si se interrumpe una solicitud, revisar la cola física antes de enviar otra. El historial vive únicamente en memoria de la sesión. Los buscadores manuales permanecen disponibles si Prisma falla.
-
-## Validación
-
-`node --test apps/desktop/prisma-agent/test/*.test.js apps/desktop/beta-printers/test/*.test.js apps/desktop/dispatch-print/test/*.test.js`
-
-También se verificaron el build Next/TypeScript, lint de los dos archivos nuevos y UI con puente simulado en escritorio/móvil. El dashboard original mantiene incidencias previas de lint. Falta validar impresoras físicas, credenciales Gemini y el despliegue real de Laravel en producción.
+## Validaciones pendientes
+Ejecutar `node --test apps/desktop/prisma-agent/test/*.test.js apps/desktop/beta-printers/test/*.test.js apps/desktop/dispatch-print/test/*.test.js`, tests PHP, Next build y pruebas físicas en Windows. Los commits no equivalen a despliegue Vercel/Windows ni acreditan que el proveedor esté conectado.

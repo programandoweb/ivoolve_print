@@ -11,9 +11,10 @@ function setup(options = {}) {
   const contents = new EventEmitter(); contents.mainFrame = { url: 'https://ivoolve-print-frontend.vercel.app/dashboard' }
   const shell = { webContents: contents }; const event = { sender: contents, senderFrame: contents.mainFrame }
   const fetchImpl = async (url, config) => {
-    requests.push({ url, config }); const data = JSON.parse(config.body)
+    requests.push({ url, config }); const data = config.body ? JSON.parse(config.body) : null
     if (options.fetchWait) await options.fetchWait
     if (options.httpError) return new Response(JSON.stringify({ message: options.errorMessage || 'No disponible' }), { status: options.httpError })
+    if (url.endsWith('/status')) return Response.json({ data: { slug: 'prisma', name: 'Prisma', enabled: options.disabled !== true, available: options.disabled !== true, configured: true, provider: 'gemini', model: 'gemini-2.5-flash', reason: options.disabled ? 'Desactivado' : null } })
     if (url.endsWith('/interpret')) return Response.json({ data: { message: 'Preparado', commands: options.work || [member('02')], requires_confirmation: false, plan_token: 'sealed', expires_at: Date.now() / 1000 + 120 } })
     if (claims.has(data.plan_token)) return Response.json({ message: 'Esta solicitud ya fue utilizada.' }, { status: 409 })
     claims.add(data.plan_token)
@@ -91,4 +92,14 @@ test('auth failures, upstream debug bodies and malformed plans never touch the p
   const debug = setup({ httpError: 503, errorMessage: 'Exception https://internal.test Bearer secret' }); const result = await debug.execute()
   assert.doesNotMatch(result.error, /internal|secret|Exception/); assert.equal(debug.calls.length, 0)
   const malformed = setup({ work: [{ ...member('02'), kind: 'invoice' }] }); assert.equal((await malformed.execute()).ok, false); assert.equal(malformed.calls.length, 0)
+})
+
+test('status reads isolated backend configuration without starting a print job', async () => {
+  const h = setup({disabled: true})
+  const status = await h.invoke('status')
+  assert.equal(status.status, 'unavailable')
+  assert.equal(status.agent.slug, 'prisma')
+  assert.equal(h.requests[0].config.method, 'GET')
+  assert.equal(h.requests[0].config.body, undefined)
+  assert.equal(h.calls.length, 0)
 })

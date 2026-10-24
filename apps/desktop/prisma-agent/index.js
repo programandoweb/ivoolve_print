@@ -28,10 +28,10 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, fetchImpl =
     try { origin = new URL(event.senderFrame.url).origin } catch {}
     if (!shells.has(event.sender) || event.senderFrame !== event.sender.mainFrame || origin !== ORIGIN) throw Error('Origen no autorizado.')
   }
-  async function request(action, auth, data) {
+  async function request(action, auth, data, method = 'POST') {
     token(auth)
     let response
-    try { response = await fetchImpl(BASE + action, { method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json', Authorization: `Bearer ${auth}` }, body: JSON.stringify(data), redirect: 'error', signal: AbortSignal.timeout(90000) }) } catch { throw Error('No fue posible contactar a Prisma. Revisa la conexión; no se reintentó el envío.') }
+    try { response = await fetchImpl(BASE + action, { method, headers: { Accept: 'application/json', ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${auth}` }, ...(method === 'POST' ? { body: JSON.stringify(data) } : {}), redirect: 'error', signal: AbortSignal.timeout(90000) }) } catch { throw Error('No fue posible contactar a Prisma. Revisa la conexión; no se reintentó el envío.') }
     const body = await bytes(response, 256 * 1024)
     let result
     try { result = JSON.parse(body.toString('utf8')) } catch { throw Error('Prisma devolvió una respuesta no válida. Actualiza el backend.') }
@@ -89,6 +89,11 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, fetchImpl =
       } finally { busy.delete(event.sender) }
     })
   }
+  handle('prisma:status', async (event, value) => {
+    const agent = await request('status', value?.token, null, 'GET')
+    if (typeof agent.enabled !== 'boolean' || typeof agent.available !== 'boolean' || agent.slug !== 'prisma') throw Error('Estado de Prisma no reconocido.')
+    return { ok: true, status: agent.available ? 'available' : 'unavailable', agent }
+  })
   handle('prisma:interpret', async (event, value) => {
     if (sessions.has(event.sender)) throw Error('Selecciona o cancela el membrete pendiente antes de otra solicitud.')
     if (!value || typeof value.text !== 'string' || value.text.length < 1 || value.text.length > 1000 || !Array.isArray(value.history) || value.history.length > 6 || value.history.some(t => typeof t !== 'string' || t.length > 1000)) throw Error('Mensaje de Prisma inválido.')

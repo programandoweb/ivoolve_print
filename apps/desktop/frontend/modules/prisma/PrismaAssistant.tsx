@@ -12,6 +12,8 @@ export default function PrismaAssistant({ token }: { token?: string }) {
   const [text, setText] = useState('')
   const [messages, setMessages] = useState<Message[]>([greeting])
   const [busy, setBusy] = useState(false)
+  const [agent, setAgent] = useState<PrismaResult['agent']>(undefined)
+  const [agentError, setAgentError] = useState('')
   const [plan, setPlan] = useState<PrismaResult | null>(null)
   const [selection, setSelection] = useState<PrismaResult | null>(null)
   const history = useRef<string[]>([])
@@ -24,6 +26,19 @@ export default function PrismaAssistant({ token }: { token?: string }) {
 
   useEffect(() => { if (open) end.current?.scrollIntoView({ block: 'nearest' }) }, [messages, selection, plan, open])
   useEffect(() => { if (open && !busy) input.current?.focus() }, [open, busy])
+  useEffect(() => {
+    if (!open) return
+    let mounted = true
+    setAgent(undefined)
+    setAgentError('')
+    if (!token) { setAgentError('Inicia sesión para usar Prisma.'); return }
+    prismaService.status(token).then(result => {
+      if (!mounted) return
+      if (!result.ok || !result.agent) { setAgentError(result.error || 'Prisma no está disponible.'); return }
+      setAgent(result.agent)
+    }).catch(() => { if (mounted) setAgentError('No fue posible consultar el estado de Prisma.'); })
+    return () => { mounted = false }
+  }, [open, token])
   // Session-only state: no prompts, tokens, tickets or history are persisted in browser storage.
   useEffect(() => {
     history.current = []; setPlan(null); setSelection(null); setMessages([greeting])
@@ -50,7 +65,7 @@ export default function PrismaAssistant({ token }: { token?: string }) {
     finally { locked.current = false; setBusy(false) }
   }
   async function submit() {
-    if (locked.current || !text.trim() || plan || selection) return
+    if (locked.current || !text.trim() || plan || selection || agent?.available === false) return
     const message = text.trim()
     setText(''); setMessages(previous => [...previous, { role: 'user' as const, text: message }].slice(-60))
     await perform(async () => {
@@ -104,6 +119,9 @@ export default function PrismaAssistant({ token }: { token?: string }) {
           <div><h2 id="prisma-title" className="flex items-center gap-2 text-lg font-bold text-slate-900"><FiPrinter className="text-pink-600" /> Prisma</h2><p className="text-xs text-slate-500">Etiquetas y membretes · Perfiles de esta estación</p></div>
           <button type="button" onClick={close} aria-label="Cerrar Prisma" className="rounded-lg p-3 text-slate-600 hover:bg-slate-100"><FiX /></button>
         </header>
+        <div aria-live="polite" className="border-b border-slate-200 px-5 py-2 text-xs text-slate-600">
+          {agentError || (agent ? (agent.available ? `Disponible · ${agent.provider} / ${agent.model}` : agent.reason || 'Prisma desactivado o sin configurar.') : 'Consultando estado de Prisma…')}
+        </div>
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-5">
           <div role="log" aria-live="polite" aria-busy={busy} className="space-y-4">
             {messages.map((message, index) => <div key={index} className={message.role === 'user' ? 'ml-8 rounded-2xl bg-pink-600 p-3 text-sm whitespace-pre-wrap break-words text-white' : 'mr-4 rounded-2xl border border-slate-200 bg-white p-3 text-sm whitespace-pre-wrap break-words text-slate-700'}>{message.text}</div>)}
@@ -122,7 +140,7 @@ export default function PrismaAssistant({ token }: { token?: string }) {
         </div>
         <form onSubmit={event => { event.preventDefault(); void submit() }} className="border-t border-slate-200 p-4">
           <p className="mb-3 text-xs text-slate-500">La impresión silenciosa y las medidas se toman del perfil. Las solicitudes de texto se procesan con IA; no incluyas contraseñas.</p>
-          <div className="flex gap-2"><input ref={input} aria-label="Mensaje para Prisma" value={text} onChange={event => setText(event.target.value)} disabled={busy || !!plan || !!selection} maxLength={1000} placeholder="Imprime el membrete 02" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 outline-none focus:border-pink-500 disabled:bg-slate-100" /><button type="submit" aria-label="Enviar a Prisma" disabled={busy || !text.trim() || !!plan || !!selection} className="rounded-xl bg-pink-600 px-4 text-white hover:bg-pink-700 disabled:opacity-40"><FiSend /></button></div>
+          <div className="flex gap-2"><input ref={input} aria-label="Mensaje para Prisma" value={text} onChange={event => setText(event.target.value)} disabled={busy || !!plan || !!selection || agent?.available === false} maxLength={1000} placeholder="Imprime el membrete 02" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 outline-none focus:border-pink-500 disabled:bg-slate-100" /><button type="submit" aria-label="Enviar a Prisma" disabled={busy || !text.trim() || !!plan || !!selection || agent?.available === false} className="rounded-xl bg-pink-600 px-4 text-white hover:bg-pink-700 disabled:opacity-40"><FiSend /></button></div>
         </form>
       </section>
     </div>}
