@@ -73,7 +73,7 @@ export default function PrismaAssistant({ token }: { token?: string }) {
       const result = await prismaService.interpret(token, message, history.current)
       if (!result.ok) throw Error(result.error || 'No fue posible interpretar la solicitud.')
       if (!result.commands?.length) {
-        history.current = [...history.current, message].slice(-6)
+        history.current = result.reset_context ? [] : [...history.current, message].slice(-6)
         append(result.message || 'Indica el documento y su número.'); return
       }
       history.current = []
