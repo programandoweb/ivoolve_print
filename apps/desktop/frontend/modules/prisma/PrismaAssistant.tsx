@@ -32,7 +32,7 @@ export default function PrismaAssistant({ token }: { token?: string }) {
     setAgent(undefined)
     setAgentError('')
     if (!token) { setAgentError('Inicia sesión para usar Prisma.'); return }
-    prismaService.status(token).then(result => {
+    Promise.resolve().then(() => prismaService.status(token)).then(result => {
       if (!mounted) return
       if (!result.ok || !result.agent) { setAgentError(result.error || 'Prisma no está disponible.'); return }
       setAgent(result.agent)
