@@ -62,14 +62,14 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
       if (state.profiles.some(p => p.id !== id && p.label.toLocaleLowerCase() === value.label.trim().toLocaleLowerCase())) throw Error('El nombre del perfil ya existe')
       const previous = state.profiles.find(p => p.id === id)
       const unchanged = previous && ((previous.identity === null && value.identity === null) || sameIdentity(previous.identity, value.identity))
-      const profile = { paper: previous?.paper ?? defaultPaper(), id, label: value.label.trim(), identity: value.identity, enabled: previous?.enabled ?? true, silentEnabled: unchanged ? previous.silentEnabled : false, silentQueueConfirmation: unchanged ? previous.silentQueueConfirmation : null }
+      const profile = { paper: previous?.paper ?? defaultPaper(value.label), paperCustomized: previous?.paperCustomized ?? false, id, label: value.label.trim(), identity: value.identity, enabled: previous?.enabled ?? true, silentEnabled: unchanged ? previous.silentEnabled : false, silentQueueConfirmation: unchanged ? previous.silentQueueConfirmation : null }
       return store.write({ ...state, profiles: [...state.profiles.filter(p => p.id !== id), profile] })
     },
     savePaper(value) {
       if (!value || !text(value.id, 64) || !validPaper(value.paper)) throw Error('Papel: medidas o márgenes inválidos.')
       const state = store.read()
       if (!state.profiles.some(p => p.id === value.id)) throw Error('Perfil desconocido')
-      return store.write({ ...state, profiles: state.profiles.map(p => p.id === value.id ? { ...p, paper: { ...value.paper } } : p) })
+      return store.write({ ...state, profiles: state.profiles.map(p => p.id === value.id ? { ...p, paper: { ...value.paper }, paperCustomized: true } : p) })
     },
     async calibrateProfile(value) {
       if (!value || !text(value.id, 64) || value.confirmed !== true || busy) throw Error('Prueba inválida o en curso')
@@ -88,7 +88,7 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
           return target.deviceName
         }
         const deviceName = await validate()
-        const paper = profile.paper ?? defaultPaper()
+        const paper = profile.paper ?? defaultPaper(profile.label)
         const choice = await dialog.showMessageBox(window, { type: 'question', buttons: ['Cancelar', 'Imprimir calibración'], defaultId: 0, cancelId: 0,
           message: 'Imprimir una página de calibración', detail: `Perfil: ${profile.label}\nCola: ${deviceName}\nPapel: ${paper.source === 'driver' ? 'Configuración de Windows' : paper.widthMm + ' × ' + paper.heightMm + ' mm'}\nSe abrirá el diálogo Windows. Confirme esta misma cola y una copia.` })
         if (choice.response !== 1) return { cancelled: true }
@@ -161,7 +161,7 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     const state = store.read()
     const profile = printProfile(state)
     if (!profile) return { options: {}, css: '' }
-    const paper = profile.paper ?? defaultPaper()
+    const paper = profile.paper ?? defaultPaper(profile.label)
     const css = paperCss(paper)
     const options = paperOptions(paper, profile.silentEnabled)
     if (!profile.silentEnabled && paper.source === 'driver' && !css) return { options, css }

@@ -78,7 +78,7 @@ async function refresh() {
   } finally { $('refresh').disabled = false }
 }
 function paperSettings(profile) {
-  const defaults = { source: 'driver', widthMm: 101.6, heightMm: 101.6, orientation: 'portrait', topMm: 0, rightMm: 0, bottomMm: 0, leftMm: 0, offsetXMm: 0, offsetYMm: 0, exposedLeftMm: 1.3, exposedRightMm: 1.3 }
+  const defaults = { source: 'driver', widthMm: 101.6, heightMm: 101.6, orientation: 'portrait', topMm: 0, rightMm: 0, bottomMm: 0, leftMm: 0, offsetXMm: 0, offsetYMm: 0, exposedLeftMm: 1.3, exposedRightMm: 1.3, ...(profile.label.trim().toLocaleLowerCase() === 'membretes' ? { widthMm: 101, heightMm: 24, exposedLeftMm: 1, exposedRightMm: 1 } : {}) }
   const saved = profile.paper || defaults
   const details = el('details', null, 'paper-settings')
   const summary = el('summary', 'Papel y calibración', 'paper-summary'); details.append(summary)
@@ -106,7 +106,7 @@ function paperSettings(profile) {
   const note = el('p', null, 'binding-note')
   const describe = () => { note.textContent = source.value === 'driver' ? 'Se usa el tamaño de papel de la cola Windows. Las medidas, orientación y márgenes de estos campos solo se aplican en Personalizado. X/Y ajustan la posición del contenido en ambos modos.' : 'Se aplican estas medidas, orientación y márgenes. La distribución de las etiquetas se conserva: cambiar el papel no rediseña su contenido.' }
   source.onchange = describe; describe()
-  content.append(grid, note, el('p', 'Los 1,3 mm de material expuesto son una referencia del driver; no se convierten en márgenes. Sensor, velocidad y temperatura se configuran en Windows.', 'binding-note'))
+  content.append(grid, note, el('p', 'El material expuesto es una referencia del driver; no se convierten en márgenes. Sensor, velocidad y temperatura se configuran en Windows.', 'binding-note'))
   const save = button('Guardar papel', 'check', 'btn btn-secondary')
   save.onclick = () => run(async () => {
     if (!Object.values(inputs).every(input => input.reportValidity())) return

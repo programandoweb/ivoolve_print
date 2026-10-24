@@ -144,7 +144,7 @@ node --test apps/desktop/beta-printers/test/*.test.js
 git diff --check
 ```
 
-23 pruebas automatizadas: inventario/fallback CIM, esquema/corrupción/escritura,
+25 pruebas automatizadas: inventario/fallback CIM, esquema/corrupción/escritura,
 regresión del handler/preload, origen/frame IPC, cancelación/confirmación manual,
 colisiones/offline, persistencia/migración, modos por perfil independientes,
 pausa efectiva de trabajos con/sin diálogo, selección por ID, renombrado y
@@ -194,8 +194,8 @@ calibración o elegir las medidas personalizadas si el controlador no responde.
 Los campos de orientación/márgenes no sobrescriben el documento en este modo;
 se conserva la orientación vertical/margen cero del flujo actual.
 
-En Personalizado, el ancho/alto se convierten a micras para Electron, la
-orientación define el lado largo/corto, los márgenes a píxeles CSS (96 dpi) y
+En Personalizado, el ancho/alto se convierten a micras para Electron, el ancho/alto se conservan exactamente sin ordenar sus lados y la
+orientación horizontal solicita un giro explícito, los márgenes a píxeles CSS (96 dpi) y
 la escala se fija al 100 %. `@page` se aplica solo en la ventana de impresión
 mediante CSS validado; X/Y se aplican solo si son distintos de cero. No se
 reescribe el HTML entregado por el API ni las medidas de sus etiquetas. La
@@ -220,3 +220,27 @@ Validación UI adicional en Chromium con IPC simulado: valores iniciales 101,6 y
 perfiles, vista de escritorio y ventana estrecha sin overflow. Ninguna prueba
 automatizada acredita las medidas impresas en hardware Windows; medir el patrón
 físico y comprobar alimentación del rollo sigue pendiente.
+
+### Preset específico de Membretes
+
+Membretes usa ancho **101 mm**, alto **24 mm**, orientación **Vertical**, material
+expuesto izquierdo/derecho **1 mm**, márgenes y desplazamientos cero. El tamaño
+se conserva en ese orden incluso siendo más ancho que alto: Vertical en el
+controlador no implica que debamos transformar 101 × 24 en 24 × 101. En modo
+Personalizado se envían exactamente 101000 × 24000 micras y landscape=false.
+El tipo troquelado y los sensores siguen configurándose en el driver Windows.
+
+El preset queda en los inputs, editable; por defecto continúa usando el tamaño
+de la cola Windows. Etiquetas conserva 101,6 × 101,6 mm y material expuesto
+1,3 mm. Nuevos perfiles llamados Membretes y perfiles antiguos sin papel reciben
+el preset específico. Los Membretes existentes con los valores genéricos
+originales completos también migran, conservando cola, flags y autorizaciones.
+Si tienen cualquier modificación del papel, o `paperCustomized=true` de un
+guardado explícito, se conservan sus valores. Antes de introducir el marcador
+no era posible distinguir un guardado explícito idéntico al preset genérico
+de uno sin modificaciones: solo esa coincidencia exacta se migra.
+
+Al guardar papel se marca como personalizado por el operador, incluso cuando
+se elige Windows, para no sobreescribirlo en migraciones siguientes. Las pruebas
+cubren el preset ancho, la ausencia de intercambio de lados, migración de
+Membretes, conservación de personalizaciones y aislamiento de Etiquetas.
