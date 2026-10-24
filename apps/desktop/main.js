@@ -1,5 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
+const { register: registerBetaPrinters } = require('./beta-printers')
+let attachBetaPrinters
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -12,6 +14,7 @@ function createWindow() {
       nodeIntegration: false,
     },
   })
+  attachBetaPrinters(win)
   //win.loadURL('http://localhost:3030')
   win.loadURL('https://ivoolve-print-frontend.vercel.app')
 }
@@ -80,4 +83,7 @@ ipcMain.handle('print-labels', async (_event, payload) => {
   }
 })
 
-app.whenReady().then(createWindow)
+app.whenReady().then(() => {
+  attachBetaPrinters = registerBetaPrinters({ app, BrowserWindow, ipcMain, ...require('electron') })
+  createWindow()
+})
