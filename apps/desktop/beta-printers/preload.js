@@ -2,7 +2,8 @@ const { contextBridge, ipcRenderer } = require('electron')
 const invoke = (method, value) => ipcRenderer.invoke(`beta-printers:${method}`, value)
 contextBridge.exposeInMainWorld('betaPrinters', Object.freeze({
   getStatus: () => invoke('getStatus'), setEnabled: value => invoke('setEnabled', value),
-  setSilentSettings: value => invoke('setSilentSettings', value),
+  setProfileSettings: value => invoke('setProfileSettings', value),
+  setLabelsProfile: id => invoke('setLabelsProfile', id),
   refresh: () => invoke('refresh'), saveProfile: value => invoke('saveProfile', value),
   removeProfile: id => invoke('removeProfile', id), testPrint: value => invoke('testPrint', value),
 }))

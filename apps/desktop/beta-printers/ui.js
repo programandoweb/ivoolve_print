@@ -34,10 +34,10 @@ async function call(method, value) {
   return result.data
 }
 async function run(action) { try { $('message').textContent = ''; await action() } catch (e) { $('message').textContent = e.message } }
-function resolution(identity, profileId) {
+function resolution(identity, profile) {
   if (!identity) return { label: 'Sin vincular', className: 'tag tag-neutral' }
   const matches = printers.filter(p => p.identity.driver === identity.driver)
-  if (matches.length > 1 && profileId === state.silentProfileId && state.silentQueueConfirmation && ['name', 'driver', 'port', 'pnp', 'serial'].every(k => state.silentQueueConfirmation[k] === identity[k]) && matches.filter(p => ['name', 'driver', 'port', 'pnp', 'serial'].every(k => p.identity[k] === identity[k])).length === 1) return { label: 'Cola confirmada', className: 'tag tag-warning' }
+  if (matches.length > 1 && profile.silentQueueConfirmation && ['name', 'driver', 'port', 'pnp', 'serial'].every(k => profile.silentQueueConfirmation[k] === identity[k]) && matches.filter(p => ['name', 'driver', 'port', 'pnp', 'serial'].every(k => p.identity[k] === identity[k])).length === 1) return { label: 'Cola confirmada', className: 'tag tag-warning' }
   if (matches.length > 1) return { label: 'Ambigua', className: 'tag tag-warning' }
   if (matches.some(p => ['name', 'port', 'pnp'].every(k => p.identity[k] === identity[k]))) return { label: 'Probable · Sin serial', className: 'tag tag-warning' }
   return { label: 'No encontrada', className: 'tag tag-warning' }
@@ -78,14 +78,14 @@ async function refresh() {
   } finally { $('refresh').disabled = false }
 }
 function renderProfiles() {
-  renderSilentSettings()
-  $('profile-count').textContent = state.profiles.filter(p => p.identity).length + ' / ' + state.profiles.length
+  $('mode-summary').textContent = String(state.profiles.filter(p => p.enabled && p.silentEnabled).length) + ' perfiles'
+  $('profile-count').textContent = state.profiles.filter(p => p.enabled && p.identity).length + ' / ' + state.profiles.length
   $('profiles').replaceChildren()
   for (const profile of state.profiles) {
-    const row = el('article', null, 'profile-card'); const heading = el('div', null, 'profile-heading')
+    const row = el('article', null, profile.enabled ? 'profile-card' : 'profile-card profile-inactive'); row.dataset.profileId = profile.id; const heading = el('div', null, 'profile-heading')
     const title = el('div', null, 'flex items-center gap-2'); const tile = el('span', null, 'icon-tile'); tile.append(icon('layers'))
     title.append(tile, el('h3', profile.label, 'text-sm font-semibold text-slate-700'))
-    const match = resolution(profile.identity, profile.id); heading.append(title, el('span', match.label, match.className))
+    const match = profile.enabled ? resolution(profile.identity, profile) : { label: 'Desactivado', className: 'tag tag-neutral' }; heading.append(title, el('span', match.label, match.className))
     const label = el('input'); label.value = profile.label; label.maxLength = 80
     const select = el('select'); select.setAttribute('aria-label', `Impresora de ${profile.label}`)
     const empty = el('option', 'Selecciona una impresora'); empty.value = ''; select.append(empty)
@@ -93,6 +93,22 @@ function renderProfiles() {
     const current = printers.findIndex(p => profile.identity && ['name', 'driver', 'port', 'pnp'].every(k => p.identity[k] === profile.identity[k]))
     select.value = current < 0 ? '' : String(current)
     const body = el('div', null, 'profile-body'); body.append(field('Nombre del perfil', label), field('Impresora asignada', select), el('p', profile.identity ? 'Cola guardada: ' + profile.identity.name : 'Vincula una impresora para utilizar este perfil.', 'binding-note'))
+    const controls = el('div', null, 'profile-controls')
+    const active = el('input'); active.type = 'checkbox'; active.checked = profile.enabled
+    const silent = el('input'); silent.type = 'checkbox'; silent.checked = profile.silentEnabled; silent.disabled = !profile.enabled || !profile.identity
+    const activeLabel = el('label', null, 'profile-check'); activeLabel.append(active, el('span', 'Perfil activo'))
+    const silentLabel = el('label', null, 'profile-check'); silentLabel.append(silent, el('span', 'Impresión silenciosa'))
+    if (silent.disabled) silentLabel.title = 'Activa el perfil y guarda una impresora vinculada para habilitar este modo.'
+    const updateFlags = () => run(async () => {
+      try { state = await call('setProfileSettings', { id: profile.id, enabled: active.checked, silentEnabled: active.checked && silent.checked }) } finally { renderProfiles() }
+    })
+    active.onchange = updateFlags; silent.onchange = updateFlags
+    const routing = el('input'); routing.type = 'radio'; routing.name = 'labels-destination'; routing.checked = state.labelsProfileId === profile.id; routing.disabled = !profile.enabled
+    routing.onchange = () => run(async () => { try { state = await call('setLabelsProfile', profile.id) } finally { renderProfiles() } })
+    const routeLabel = el('label', null, 'profile-check profile-route'); routeLabel.append(routing, el('span', 'Recibir trabajos de etiquetas'))
+    const modeText = !profile.enabled ? 'Pausado: no se enviarán trabajos a este perfil.' : profile.silentEnabled ? 'Sin diálogo: envío directo a la impresora guardada.' : 'Con diálogo: Windows solicitará seleccionar la impresora.'
+    controls.append(activeLabel, silentLabel, routeLabel, el('p', modeText, 'binding-note'))
+    body.append(controls)
     const save = button('Guardar', 'check', 'btn btn-primary')
     save.onclick = () => run(async () => { state = await call('saveProfile', { id: profile.id, label: label.value, identity: select.value === '' ? null : printers[Number(select.value)].identity }); renderProfiles(); $('message').textContent = 'Perfil guardado correctamente.' })
     const unlink = button('Desvincular', 'unlink', 'btn btn-quiet'); unlink.disabled = !profile.identity
@@ -104,23 +120,6 @@ function renderProfiles() {
     row.append(heading, body, actions); $('profiles').append(row)
   }
 }
-function renderSilentSettings() {
-  $('silent').checked = Boolean(state.silentEnabled)
-  $('silent-profile').replaceChildren()
-  const empty = el('option', 'Selecciona un perfil vinculado'); empty.value = ''; $('silent-profile').append(empty)
-  for (const profile of state.profiles) {
-    const option = el('option', profile.label + (profile.identity ? ' · ' + profile.identity.name : ' · Sin vincular'))
-    option.value = profile.id; option.disabled = !profile.identity; $('silent-profile').append(option)
-  }
-  $('silent-profile').value = state.silentProfileId || ''
-  $('silent-status').textContent = state.silentEnabled ? 'Activo · ' + (state.profiles.find(p => p.id === state.silentProfileId)?.label || 'Perfil eliminado: revisa la configuración') : 'Con diálogo Windows · Modo habitual'
-  $('mode-summary').textContent = state.silentEnabled ? 'Sin diálogo' : 'Con diálogo'
-}
-async function saveSilentSettings() {
-  try { state = await call('setSilentSettings', { enabled: $('silent').checked, profileId: $('silent-profile').value }) } finally { renderSilentSettings() }
-}
-$('silent').onchange = () => run(saveSilentSettings)
-$('silent-profile').onchange = () => run(saveSilentSettings)
 $('enabled').onchange = () => run(async () => { try { await call('setEnabled', $('enabled').checked) } finally { await load() } })
 $('refresh').onclick = () => run(refresh)
 $('new').onsubmit = event => { event.preventDefault(); run(async () => { state = await call('saveProfile', { id: '', label: $('label').value, identity: null }); $('label').value = ''; renderProfiles() }) }

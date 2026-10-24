@@ -3,7 +3,7 @@ const { pathToFileURL } = require('node:url')
 const { randomUUID } = require('node:crypto')
 const { Store, resolve, validIdentity, text } = require('./core')
 const { inventory } = require('./inventory')
-const { silentOptions } = require('./silent')
+const { silentOptions, printProfile, sameIdentity } = require('./silent')
 const same = (a, b) => ['name', 'driver', 'port', 'pnp', 'serial'].every(k => a[k] === b[k])
 const escape = s => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
 function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
@@ -16,18 +16,21 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     getStatus: () => status(),
     setEnabled(value) {
       if (typeof value !== 'boolean') throw Error('Activación inválida')
-      return store.write({ ...store.read(), enabled: value, ...(!value ? { silentEnabled: false, silentQueueConfirmation: null } : {}) })
-    },
-    async setSilentSettings(value) {
-      if (!value || typeof value.enabled !== 'boolean' || !text(value.profileId, 64)) throw Error('Ajuste inválido')
       const state = store.read()
-      const next = { ...state, silentEnabled: value.enabled, silentProfileId: value.profileId, silentQueueConfirmation: null }
-      if (value.enabled) {
+      return store.write({ ...state, enabled: value, profiles: value ? state.profiles : state.profiles.map(p => ({ ...p, silentEnabled: false, silentQueueConfirmation: null })) })
+    },
+    async setProfileSettings(value) {
+      if (!value || typeof value.enabled !== 'boolean' || typeof value.silentEnabled !== 'boolean' || !text(value.id, 64)) throw Error('Ajuste inválido')
+      const state = store.read()
+      const profile = state.profiles.find(p => p.id === value.id)
+      if (!profile) throw Error('Perfil desconocido')
+      const target = { ...profile, enabled: value.enabled, silentEnabled: value.enabled && value.silentEnabled, silentQueueConfirmation: null }
+      const next = { ...state, profiles: state.profiles.map(p => p.id === target.id ? target : p) }
+      if (target.silentEnabled) {
         const result = await inventory(window.webContents)
-        try { silentOptions(next, result.printers) } catch (error) {
+        try { silentOptions(next, result.printers, target.id) } catch (error) {
           if (error.code !== 'QUEUE_CONFIRMATION_REQUIRED') throw error
-          const profile = next.profiles.find(p => p.id === next.silentProfileId)
-          const selected = profile.identity
+          const selected = target.identity
           const choice = await dialog.showMessageBox(window, {
             type: 'warning', buttons: ['Cancelar', 'Confirmar esta cola'], defaultId: 0, cancelId: 0,
             message: 'Hay impresoras del mismo modelo. Confirme la cola Windows.',
@@ -35,13 +38,20 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
           })
           if (store.read() !== state) throw Error('Configuración modificada; vuelva a intentarlo')
           if (choice.response !== 1) return state
-          next.silentQueueConfirmation = { ...selected }
+          target.silentQueueConfirmation = { ...selected }
           const current = await inventory(window.webContents)
-          silentOptions(next, current.printers)
+          silentOptions(next, current.printers, target.id)
         }
         if (store.read() !== state) throw Error('Configuración modificada; vuelva a intentarlo')
       }
       return store.write(next)
+    },
+    setLabelsProfile(id) {
+      if (!text(id, 64)) throw Error('Perfil inválido')
+      const state = store.read()
+      const profile = state.profiles.find(p => p.id === id)
+      if (!profile?.enabled) throw Error('Perfil desactivado o desconocido')
+      return store.write({ ...state, labelsProfileId: id })
     },
     async refresh() { return inventory(window.webContents) },
     saveProfile(value) {
@@ -49,7 +59,9 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
       const state = store.read()
       const id = value.id || randomUUID()
       if (state.profiles.some(p => p.id !== id && p.label.toLocaleLowerCase() === value.label.trim().toLocaleLowerCase())) throw Error('El nombre del perfil ya existe')
-      const profile = { id, label: value.label.trim(), identity: value.identity }
+      const previous = state.profiles.find(p => p.id === id)
+      const unchanged = previous && ((previous.identity === null && value.identity === null) || sameIdentity(previous.identity, value.identity))
+      const profile = { id, label: value.label.trim(), identity: value.identity, enabled: previous?.enabled ?? true, silentEnabled: unchanged ? previous.silentEnabled : false, silentQueueConfirmation: unchanged ? previous.silentQueueConfirmation : null }
       return store.write({ ...state, profiles: [...state.profiles.filter(p => p.id !== id), profile] })
     },
     removeProfile(id) {
@@ -85,7 +97,7 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
       try {
         if (!['getStatus', 'setEnabled'].includes(method) && !store.read().enabled) throw Error('BETA desactivada')
         return { ok: true, data: await handler(value) }
-      } catch (error) { return { ok: false, error: method === 'setSilentSettings' && error.message.startsWith('Impresión sin diálogo') ? error.message : 'Operación rechazada. Revise los datos, habilitación BETA, permisos y coincidencia del dispositivo; si es ambiguo, verifique manualmente en Windows.' } }
+      } catch (error) { return { ok: false, error: method === 'setProfileSettings' && error.message.startsWith('Impresión sin diálogo') ? error.message : 'Operación rechazada. Revise los datos, habilitación BETA, permisos y coincidencia del dispositivo; si es ambiguo, verifique manualmente en Windows.' } }
     })
   }
   // The remote shell can only open our local window. Configuration IPC remains local.
@@ -113,7 +125,8 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
   }
   attach.getPrintOptions = async (event) => {
     const state = store.read()
-    if (!state.enabled || !state.silentEnabled) return {}
+    const profile = printProfile(state)
+    if (!profile?.silentEnabled) return {}
     let allowedOrigin = false
     try { allowedOrigin = new URL(event.senderFrame.url).origin === 'https://ivoolve-print-frontend.vercel.app' } catch {}
     if (!authorizedShells.has(event.sender) || event.senderFrame !== event.sender.mainFrame || !allowedOrigin) throw Error('Origen no autorizado para impresión sin diálogo')

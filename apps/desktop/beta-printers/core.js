@@ -18,12 +18,23 @@ function resolve(identity, printers) {
   return { state: exact.length === 1 ? 'probable' : 'not-found', candidates: exact }
 }
 function initial() {
-  return { version: 1, station: randomUUID(), enabled: false, silentEnabled: false, silentProfileId: '', silentQueueConfirmation: null, updatedAt: new Date().toISOString(), profiles: ['Etiquetas', 'Membretes', 'Despachos'].map(label => ({ id: randomUUID(), label, identity: null })) }
+  const profiles = ['Etiquetas', 'Membretes', 'Despachos'].map(label => ({ id: randomUUID(), label, identity: null, enabled: true, silentEnabled: false, silentQueueConfirmation: null }))
+  return { version: 1, station: randomUUID(), enabled: false, labelsProfileId: profiles[0].id, updatedAt: new Date().toISOString(), profiles }
 }
 function validState(s) {
-  return s && s.version === 1 && text(s.station, 64) && typeof s.enabled === 'boolean' && (s.silentEnabled === undefined || typeof s.silentEnabled === 'boolean') && (s.silentProfileId === undefined || text(s.silentProfileId, 64)) && (s.silentQueueConfirmation == null || validIdentity(s.silentQueueConfirmation)) && text(s.updatedAt, 64) && Array.isArray(s.profiles) && s.profiles.length <= 100 &&
-    s.profiles.every(p => p && text(p.id, 64) && p.id.length && text(p.label, 80) && p.label.trim() && (p.identity === null || validIdentity(p.identity))) &&
+  return s && s.version === 1 && text(s.station, 64) && typeof s.enabled === 'boolean' && (s.labelsProfileId === undefined || text(s.labelsProfileId, 64)) &&
+    (s.silentEnabled === undefined || typeof s.silentEnabled === 'boolean') && (s.silentProfileId === undefined || text(s.silentProfileId, 64)) && (s.silentQueueConfirmation == null || validIdentity(s.silentQueueConfirmation)) && text(s.updatedAt, 64) && Array.isArray(s.profiles) && s.profiles.length <= 100 &&
+    s.profiles.every(p => p && text(p.id, 64) && p.id.length && text(p.label, 80) && p.label.trim() && (p.identity === null || validIdentity(p.identity)) &&
+      (p.enabled === undefined || typeof p.enabled === 'boolean') && (p.silentEnabled === undefined || typeof p.silentEnabled === 'boolean') && (p.silentQueueConfirmation == null || validIdentity(p.silentQueueConfirmation))) &&
     new Set(s.profiles.map(p => p.id)).size === s.profiles.length && new Set(s.profiles.map(p => p.label.trim().toLocaleLowerCase())).size === s.profiles.length
+}
+function normalize(s) {
+  const { silentEnabled, silentProfileId, silentQueueConfirmation, ...rest } = s
+  return {
+    ...rest,
+    labelsProfileId: s.labelsProfileId ?? (silentProfileId || s.profiles.find(p => p.label.trim().toLocaleLowerCase() === 'etiquetas')?.id || ''),
+    profiles: s.profiles.map(p => ({ ...p, enabled: p.enabled ?? true, silentEnabled: p.silentEnabled ?? (p.id === silentProfileId && silentEnabled === true), silentQueueConfirmation: p.silentQueueConfirmation ?? (p.id === silentProfileId ? silentQueueConfirmation ?? null : null) })),
+  }
 }
 class Store {
   constructor(dir) { this.file = path.join(dir, 'beta-printer-profiles.json'); this.state = initial(); this.diagnostic = null; this.loaded = false }
@@ -35,14 +46,14 @@ class Store {
       if (!stat.isFile() || stat.size > 262144) throw Error('invalid')
       const s = JSON.parse(fs.readFileSync(this.file, 'utf8'))
       if (!validState(s)) throw Error('invalid')
-      // Additive v1 migration: existing bindings survive, silent mode starts OFF.
-      this.state = { ...s, silentEnabled: s.silentEnabled ?? false, silentProfileId: s.silentProfileId ?? '', silentQueueConfirmation: s.silentQueueConfirmation ?? null }
+      // Preserve old bindings, selected label destination and its silent authorization.
+      this.state = normalize(s)
     } catch (e) { if (e.code !== 'ENOENT') this.diagnostic = 'Configuración ilegible o incompatible. BETA desactivada; archivo original conservado hasta guardar un cambio explícito.' }
     return this.state
   }
   write(next) {
     if (!validState(next)) throw Error('Configuración inválida')
-    const value = { ...next, updatedAt: new Date().toISOString() }
+    const value = { ...normalize(next), updatedAt: new Date().toISOString() }
     fs.mkdirSync(path.dirname(this.file), { recursive: true })
     const tmp = `${this.file}.${randomUUID()}.tmp`
     try {

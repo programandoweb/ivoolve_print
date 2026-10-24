@@ -10,9 +10,9 @@
   button, input, select { font: inherit; }
   button { @apply cursor-pointer; }
   button:disabled { @apply cursor-not-allowed opacity-45; }
-  input:not([type=checkbox]), select { @apply w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition; }
-  input:not([type=checkbox]):focus, select:focus { @apply border-pink-400 ring-3 ring-pink-100; }
-  input[type=checkbox] { @apply size-5 shrink-0 cursor-pointer accent-pink-600; }
+  input:not([type=checkbox]):not([type=radio]), select { @apply w-full min-w-0 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition; }
+  input:not([type=checkbox]):not([type=radio]):focus, select:focus { @apply border-pink-400 ring-3 ring-pink-100; }
+  input:is([type=checkbox], [type=radio]) { @apply size-5 shrink-0 cursor-pointer accent-pink-600; }
   :focus-visible { @apply outline-2 outline-offset-4 outline-pink-500; }
   [hidden] { display: none !important; }
   section { scroll-margin-top: 100px; }
@@ -89,6 +89,12 @@
   .section-footnote { @apply mt-3 flex items-start gap-2 text-xs leading-5 text-slate-400; }
   .section-footnote svg { @apply mt-0.5 shrink-0; }
   .profile-card { @apply min-w-0 overflow-hidden rounded-2xl border border-slate-200/80 bg-white; }
+  .profile-inactive { @apply border-dashed bg-slate-50; }
+  .profile-help { @apply mb-4 text-xs leading-6 text-slate-500; }
+  .profile-controls { @apply space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3; }
+  .profile-check { @apply flex cursor-pointer items-center gap-2.5 text-xs font-medium text-slate-700; }
+  .profile-check input:disabled { @apply cursor-not-allowed opacity-40; }
+  .profile-route { @apply border-t border-slate-200 pt-3; }
   .profile-heading { @apply flex items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/60 px-4 py-3; }
   .profile-heading .icon-tile { @apply size-8 rounded-lg; }
   .profile-body { @apply space-y-4 p-4; }

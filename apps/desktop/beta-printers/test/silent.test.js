@@ -7,35 +7,40 @@ const vm = require('node:vm')
 const { Store } = require('../core')
 const { silentOptions } = require('../silent')
 const identity = { name: 'Labels', driver: '', port: '', pnp: '', serial: '' }
-const state = { enabled: true, silentEnabled: true, silentProfileId: 'label', profiles: [{ id: 'label', label: 'Etiquetas', identity }] }
+const state = { enabled: true, labelsProfileId: 'label', profiles: [{ id: 'label', label: 'Etiquetas', identity, enabled: true, silentEnabled: true, silentQueueConfirmation: null }] }
 const temp = t => { const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'silent-printers-')); t.after(() => fs.rmSync(dir, { recursive: true, force: true })); return dir }
 
 test('silent choice: OFF unchanged; selected profile only; missing/ambiguous/offline rejected', () => {
   const printers = [{ identity, status: 'desconocido' }]
-  assert.deepEqual(silentOptions({ ...state, silentEnabled: false }, []), {})
+  assert.deepEqual(silentOptions({ ...state, profiles: [{ ...state.profiles[0], silentEnabled: false }] }, []), {})
   assert.deepEqual(silentOptions({ ...state, enabled: false }, []), {})
   assert.deepEqual(silentOptions(state, printers), { silent: true, deviceName: 'Labels' })
-  assert.throws(() => silentOptions({ ...state, silentProfileId: 'missing' }, printers), /perfil vinculado/)
+  assert.throws(() => silentOptions({ ...state, labelsProfileId: 'missing' }, printers), /Perfil de impresión no encontrado/)
   assert.throws(() => silentOptions(state, []), /no encontrada o ambigua/)
   assert.throws(() => silentOptions(state, [...printers, { identity: { ...identity, name: 'Copy' } }]), /ambigua/)
   assert.throws(() => silentOptions(state, [{ identity, status: 'offline (cola Windows)' }]), /fuera de línea/)
   assert.throws(() => silentOptions(state, [{ identity: { ...identity, port: 'USB004' } }]), /no encontrada/)
 })
-test('old v1 bindings survive; silent is OFF and settings persist across restart', t => {
-  const dir = temp(t); const first = new Store(dir); const old = first.read()
-  delete old.silentEnabled; delete old.silentProfileId
-  old.profiles[0].identity = identity
-  fs.writeFileSync(first.file, JSON.stringify(old))
-  const next = new Store(dir); const migrated = next.read()
-  assert.equal(migrated.silentEnabled, false); assert.equal(migrated.silentProfileId, '')
-  assert.deepEqual(migrated.profiles, old.profiles)
-  next.write({ ...migrated, enabled: true, silentEnabled: true, silentProfileId: old.profiles[0].id })
-  assert.equal(new Store(dir).read().silentEnabled, true)
-  assert.throws(() => next.write({ ...migrated, silentEnabled: 'true' }), /inválida/)
+test('old v1 bindings and enabled silent authorization migrate to their own profile', t => {
+  const dir = temp(t); const first = new Store(dir)
+  for (const silentEnabled of [false, true]) {
+    const old = { version: 1, station: 'station', enabled: true, updatedAt: new Date().toISOString(), silentEnabled, silentProfileId: 'custom', silentQueueConfirmation: identity, profiles: [{ id: 'label', label: 'Etiquetas', identity: null }, { id: 'custom', label: 'Personalizado', identity }] }
+    fs.writeFileSync(first.file, JSON.stringify(old))
+    const next = new Store(dir); const migrated = next.read()
+    assert.equal(migrated.labelsProfileId, 'custom')
+    assert.equal(migrated.profiles[1].silentEnabled, silentEnabled)
+    assert.equal(migrated.profiles[0].silentEnabled, false)
+    assert.deepEqual(migrated.profiles[1].identity, identity)
+    assert.equal(migrated.profiles[1].enabled, true)
+    next.write(migrated)
+    assert.deepEqual(new Store(dir).read(), next.state)
+    assert.equal('silentEnabled' in migrated, false)
+    assert.throws(() => next.write({ ...migrated, profiles: [{ ...migrated.profiles[0], enabled: 'yes' }] }), /inválida/)
+  }
 })
 async function runtime(t, options = {}) {
   const dir = temp(t); const store = new Store(dir); const initial = store.read()
-  store.write({ ...initial, enabled: options.beta !== false, silentEnabled: Boolean(options.silent), silentProfileId: initial.profiles[0].id, profiles: initial.profiles.map((p, i) => i ? p : { ...p, identity: options.missing ? null : identity }) })
+  store.write({ ...initial, enabled: options.beta !== false, profiles: initial.profiles.map((p, i) => i ? p : { ...p, identity: options.missing ? null : identity, enabled: options.active !== false, silentEnabled: Boolean(options.silent) }) })
   const handlers = {}; const windows = []; const printed = []; const requests = []; let inventoryCalls = 0; let open
   class Window {
     constructor() {
@@ -91,18 +96,18 @@ test('local IPC: toggles persist, invalid activation rejected, beta OFF disarms 
   const event = { sender: settings.webContents, senderFrame: settings.webContents.mainFrame }
   const invoke = (method, value) => h.handlers[`beta-printers:${method}`](event, value)
   const old = (await invoke('getStatus')).data
-  assert.equal((await invoke('setSilentSettings', { enabled: 'yes', profileId: old.profiles[0].id })).ok, false)
-  assert.equal((await invoke('setSilentSettings', { enabled: true, profileId: '' })).ok, false)
-  const enabled = await invoke('setSilentSettings', { enabled: true, profileId: old.profiles[0].id })
-  assert.equal(enabled.ok, true); assert.equal(enabled.data.silentEnabled, true)
+  assert.equal((await invoke('setProfileSettings', { enabled: 'yes', silentEnabled: true, id: old.profiles[0].id })).ok, false)
+  assert.equal((await invoke('setProfileSettings', { enabled: true, silentEnabled: true, id: '' })).ok, false)
+  const enabled = await invoke('setProfileSettings', { enabled: true, silentEnabled: true, id: old.profiles[0].id })
+  assert.equal(enabled.ok, true); assert.equal(enabled.data.profiles[0].silentEnabled, true)
   assert.equal((await h.print({})).ok, true); assert.equal(h.printed.at(-1).silent, true)
-  await invoke('setSilentSettings', { enabled: false, profileId: old.profiles[0].id })
+  await invoke('setProfileSettings', { enabled: true, silentEnabled: false, id: old.profiles[0].id })
   assert.equal((await h.print({})).ok, true); assert.equal(h.printed.at(-1).silent, false)
-  await invoke('setSilentSettings', { enabled: true, profileId: old.profiles[0].id })
-  const off = await invoke('setEnabled', false); assert.equal(off.data.silentEnabled, false)
+  await invoke('setProfileSettings', { enabled: true, silentEnabled: true, id: old.profiles[0].id })
+  const off = await invoke('setEnabled', false); assert.equal(off.data.profiles[0].silentEnabled, false)
   await invoke('setEnabled', true)
-  assert.equal((await invoke('getStatus')).data.silentEnabled, false)
-  await assert.rejects(h.handlers['beta-printers:setSilentSettings'](h.event, { enabled: true, profileId: old.profiles[0].id }), /Origen/)
+  assert.equal((await invoke('getStatus')).data.profiles[0].silentEnabled, false)
+  await assert.rejects(h.handlers['beta-printers:setProfileSettings'](h.event, { enabled: true, silentEnabled: true, id: old.profiles[0].id }), /Origen/)
 })
 
 test('identical models: explicit queue confirmation, immutable binding, no inferred physical serial', () => {
@@ -111,14 +116,14 @@ test('identical models: explicit queue confirmation, immutable binding, no infer
   const printers = [{ identity: a }, { identity: b }]
   const configured = { ...state, profiles: [{ ...state.profiles[0], identity: a }] }
   assert.throws(() => silentOptions(configured, printers), error => error.code === 'QUEUE_CONFIRMATION_REQUIRED')
-  const approved = { ...configured, silentQueueConfirmation: a }
+  const approved = { ...configured, profiles: [{ ...configured.profiles[0], silentQueueConfirmation: a }] }
   assert.deepEqual(silentOptions(approved, printers), { silent: true, deviceName: a.name })
   for (const key of ['name', 'driver', 'port', 'pnp']) {
     assert.throws(() => silentOptions(approved, [{ identity: { ...a, [key]: 'CHANGED' } }, { identity: b }]))
   }
   assert.throws(() => silentOptions(approved, [{ identity: a }, { identity: a }]), /ambigua/)
   assert.throws(() => silentOptions(approved, [{ identity: a }, { identity: { ...b, name: a.name } }]), /ambigua/)
-  assert.throws(() => silentOptions({ ...approved, silentQueueConfirmation: b }, printers), error => error.code === 'QUEUE_CONFIRMATION_REQUIRED')
+  assert.throws(() => silentOptions({ ...approved, profiles: [{ ...approved.profiles[0], silentQueueConfirmation: b }] }, printers), error => error.code === 'QUEUE_CONFIRMATION_REQUIRED')
   assert.throws(() => silentOptions(approved, [{ identity: a, status: 'offline (CIM)' }, { identity: b }]), /fuera de línea/)
 })
 
@@ -135,24 +140,72 @@ test('manual queue IPC: native cancel, accept, revalidation, persistence, disarm
   }
   const entry = path.resolve(__dirname, '../index.js'); const exports = { exports: {} }; const nativeRequire = require('node:module').createRequire(entry)
   vm.runInNewContext(fs.readFileSync(entry, 'utf8'), { __dirname: path.dirname(entry), module: exports, URL, require: name => name === './inventory' ? { inventory: async () => ({ printers: rows }) } : nativeRequire(name) })
-  const attach = exports.exports.register({ app: { getPath: () => dir }, BrowserWindow: Window, Menu: { buildFromTemplate: items => { launch = items[0].submenu[0].click } }, ipcMain: { handle: (name, fn) => { handlers[name] = fn } }, dialog: { showMessageBox: async (_, options) => { confirmations++; assert.match(options.detail, /USB003/); assert.match(options.detail, /no un equipo físico/); return { response } } } })
+  const attach = exports.exports.register({ app: { getPath: () => dir }, BrowserWindow: Window, Menu: { buildFromTemplate: items => { launch = items[0].submenu[0].click } }, ipcMain: { handle: (name, fn) => { handlers[name] = fn } }, dialog: { showMessageBox: async (_, options) => { confirmations++; assert.match(options.detail, /USB00[34]/); assert.match(options.detail, /no un equipo físico/); return { response } } } })
   const shell = { webContents: { mainFrame: { url: 'https://ivoolve-print-frontend.vercel.app/dashboard' } }, setMenu() {}, setMenuBarVisibility() {} }; attach(shell); launch()
   const localEvent = { sender: opened.webContents, senderFrame: opened.webContents.mainFrame }
   const shellEvent = { sender: shell.webContents, senderFrame: shell.webContents.mainFrame }
   const invoke = (method, value) => handlers[`beta-printers:${method}`](localEvent, value)
-  const config = { enabled: true, profileId: initial.profiles[0].id }
-  const cancelled = await invoke('setSilentSettings', config)
-  assert.equal(cancelled.data.silentEnabled, false); assert.equal(confirmations, 1)
+  const config = { enabled: true, silentEnabled: true, id: initial.profiles[0].id }
+  const cancelled = await invoke('setProfileSettings', config)
+  assert.equal(cancelled.data.profiles[0].silentEnabled, false); assert.equal(confirmations, 1)
   response = 1
-  const accepted = await invoke('setSilentSettings', config)
-  assert.equal(accepted.ok, true); assert.equal(accepted.data.silentEnabled, true); assert.equal(confirmations, 2)
-  assert.equal(new Store(dir).read().silentQueueConfirmation.port, 'USB003')
+  const accepted = await invoke('setProfileSettings', config)
+  assert.equal(accepted.ok, true); assert.equal(accepted.data.profiles[0].silentEnabled, true); assert.equal(confirmations, 2)
+  assert.equal(new Store(dir).read().profiles[0].silentQueueConfirmation.port, 'USB003')
   assert.equal((await attach.getPrintOptions(shellEvent)).deviceName, a.name); assert.equal(confirmations, 2)
   rows = [{ identity: { ...a, port: 'USB009' } }, { identity: b }]
   await assert.rejects(attach.getPrintOptions(shellEvent), /no encontrada o ambigua/)
   rows = [{ identity: a }, { identity: b }]
   await invoke('saveProfile', { id: initial.profiles[0].id, label: 'Etiquetas', identity: b })
-  await assert.rejects(attach.getPrintOptions(shellEvent), /confirme manualmente/)
+  assert.equal((await invoke('getStatus')).data.profiles.find(p => p.id === config.id).silentEnabled, false)
+  assert.equal((await invoke('setProfileSettings', config)).ok, true)
+  assert.equal(confirmations, 3)
   const disabled = await invoke('setEnabled', false)
-  assert.equal(disabled.data.silentQueueConfirmation, null); assert.equal(disabled.data.silentEnabled, false)
+  assert.equal(disabled.data.profiles[0].silentQueueConfirmation, null); assert.equal(disabled.data.profiles[0].silentEnabled, false)
+})
+
+test('per-profile settings are independent; disabled destination blocks both silent and dialog jobs', async t => {
+  const h = await runtime(t)
+  h.open()
+  const event = { sender: h.windows[1].webContents, senderFrame: h.windows[1].webContents.mainFrame }
+  const invoke = (method, value) => h.handlers[`beta-printers:${method}`](event, value)
+  let settings = (await invoke('getStatus')).data
+  const a = settings.profiles[0].id; const b = settings.profiles[1].id
+  await invoke('saveProfile', { id: b, label: 'Membretes', identity })
+  assert.equal((await invoke('setProfileSettings', { id: b, enabled: true, silentEnabled: true })).ok, true)
+  settings = (await invoke('getStatus')).data
+  assert.equal(settings.profiles.find(p => p.id === b).silentEnabled, true)
+  assert.equal(settings.profiles.find(p => p.id === a).silentEnabled, false)
+  assert.equal((await h.print({})).ok, true); assert.equal(h.printed.at(-1).silent, false)
+  const renamed = await invoke('saveProfile', { id: b, label: 'Papel membrete', identity })
+  assert.equal(renamed.data.profiles.find(p => p.id === b).silentEnabled, true)
+  assert.equal((await invoke('setLabelsProfile', b)).ok, true)
+  assert.equal((await h.print({})).ok, true); assert.equal(h.printed.at(-1).silent, true)
+  const off = await invoke('setProfileSettings', { id: b, enabled: false, silentEnabled: true })
+  assert.equal(off.data.profiles.find(p => p.id === b).enabled, false)
+  assert.deepEqual(off.data.profiles.find(p => p.id === b).identity, identity)
+  assert.equal(off.data.profiles.find(p => p.id === b).silentEnabled, false)
+  const count = h.printed.length; const calls = h.inventoryCalls()
+  const blocked = await h.print({}); assert.equal(blocked.ok, false); assert.match(blocked.message, /desactivado/)
+  assert.equal(h.printed.length, count); assert.equal(h.inventoryCalls(), calls)
+  assert.equal((await invoke('setLabelsProfile', b)).ok, false)
+  assert.equal((await invoke('setLabelsProfile', a)).ok, true)
+  assert.equal((await h.print({})).ok, true); assert.equal(h.printed.at(-1).silent, false)
+  assert.equal((await invoke('setProfileSettings', { id: b, enabled: true, silentEnabled: false })).ok, true)
+  assert.equal((await invoke('getStatus')).data.profiles.find(p => p.id === b).silentEnabled, false)
+  await invoke('removeProfile', a)
+  const removed = await h.print({}); assert.equal(removed.ok, false); assert.match(removed.message, /no encontrado/)
+})
+
+test('routing by ID preserves profile-specific dialog/silent/disabled modes', () => {
+  const profiles = [
+    { id: 'a', enabled: true, silentEnabled: true, identity: { ...identity, driver: 'A' } },
+    { id: 'b', enabled: true, silentEnabled: false, identity: { ...identity, name: 'Other', driver: 'B' } },
+    { id: 'c', enabled: false, silentEnabled: false, identity: null },
+  ]
+  const configured = { enabled: true, labelsProfileId: 'a', profiles }
+  const printers = profiles.filter(p => p.identity).map(p => ({ identity: p.identity }))
+  assert.equal(silentOptions(configured, printers).deviceName, 'Labels')
+  assert.deepEqual(silentOptions(configured, printers, 'b'), {})
+  assert.throws(() => silentOptions(configured, printers, 'c'), /desactivado/)
 })

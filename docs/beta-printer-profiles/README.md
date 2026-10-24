@@ -1,268 +1,161 @@
-# Perfiles locales de impresoras BETA
+# Impresoras BETA · configuración local Electron
 
-## Alcance y baseline
+## Alcance y ejecución
 
-Repositorio: `programandoweb/ivoolve_print`. Baseline limpio de `main`:
-`e1a758cebdf2a77e1653010e2d747fd8043776a8`.
+Solo `programandoweb/ivoolve_print`; `ivoolveFlow` no se modifica. Electron carga
+`https://ivoolve-print-frontend.vercel.app`. El engranaje de ese frontend abre una
+ventana local controlada. También existe el menú nativo «⚙ Impresoras BETA».
+`renderer/pages/settings.js` es legado y no participa en el runtime actual.
 
-Electron ejecuta `apps/desktop/main.js`, que carga
-`https://ivoolve-print-frontend.vercel.app`; no carga `renderer/pages/settings.js`.
-La configuración legada de `localStorage` no se lee ni modifica. El frontend Next
-local no es necesario para esta pantalla. No se requiere desplegar Vercel.
-
-El montaje inicial modifica `apps/desktop/main.js`: importación y
-registro del módulo, más montaje del menú nativo visible «⚙ Impresoras BETA».
-El cambio de visibilidad de este menú es deliberado para garantizar acceso real
-sin inyectar código en el sitio remoto. No cambia la URL ni su navegación.
-El puente `window.api.print`, Socket.IO, API y plantillas quedan idénticos.
-La fase opcional sin diálogo añade al handler `print-labels` una consulta local
-de opciones y su aplicación a la llamada Electron; el resto del handler permanece
-igual. Con el check desmarcado, las opciones efectivas son las originales. No se modificó `ivoolveFlow`.
-
-## Ejecución y activación
-
-En una estación Windows con Node y dependencias instaladas:
+Tras actualizar el repositorio en la estación Windows, cerrar Electron y ejecutar:
 
 ```sh
-npm ci
+git pull --ff-only origin main
 npm exec --workspace=desktop -- electron .
 ```
 
-El comando del workspace inicia Electron directamente; el shell sigue remoto.
-Para trabajar con el flujo local habitual también se conserva `npm run dev:desktop`.
-El API local que usa la impresión tradicional debe seguir operando como antes.
+En una instalación nueva ejecutar antes `npm ci`. Mantener el API local de
+impresión funcionando como antes. No hace falta redesplegar Vercel para cambiar
+esta ventana local. Recargar la web no actualiza Electron ni su preload.
 
-1. Abrir el engranaje «Impresoras BETA» en la esquina superior derecha del frontend
-   de Vercel dentro de Electron. También sigue disponible el menú nativo
-   «⚙ Impresoras BETA → Configurar perfiles locales…».
-2. BETA comienza apagada en una instalación nueva. Habilitarla explícitamente.
-3. La lista se consulta al abrir la pantalla habilitada o actualizar manualmente.
-4. Asignar colas a Etiquetas, Membretes o Despachos; crear, renombrar, desvincular
-   y eliminar perfiles sin alterar otras configuraciones.
-5. Guardar explícitamente una nueva asociación tras revisar cambios de cola/puerto.
-6. Para imprimir sin diálogo, elegir el perfil en «Perfil para las etiquetas» y
-   marcar «Imprimir sin cuadro de diálogo». Desmarcarlo restaura el selector Windows.
-7. Desactivar BETA conserva los perfiles y desmarca también la impresión sin diálogo.
+## Controles dentro de cada perfil
 
-Desactivada, no enumera impresoras ni ejecuta PowerShell. La configuración se
-lee al abrir la ventana o al recibir el primer trabajo para determinar su modo. No existen timers ni suscripciones de hardware. Con el check OFF, los trabajos
-normales no consultan el inventario de impresoras. La persistencia de la activación
-es local; no hay variable de entorno que la active inadvertidamente.
+Habilitar BETA es un opt-in de la estación. Dentro de cada tarjeta (Etiquetas,
+Membretes, Despachos o cualquier perfil personalizado) se encuentran:
 
-## Arquitectura y límites
+- **Perfil activo**: desmarcar pausa ese perfil sin borrar su nombre ni impresora.
+  Los trabajos dirigidos a un perfil pausado se rechazan, tanto en modo con
+  diálogo como sin diálogo, sin redirigirlos a otra impresora. No desactiva
+  físicamente la impresora ni cambia Windows.
+- **Impresión silenciosa**: marcado imprime directamente a la cola vinculada;
+  desmarcado conserva el diálogo Windows. Cada perfil guarda su propio valor y
+  autorización de cola. Se necesita perfil activo y una impresora guardada.
+- **Recibir trabajos de etiquetas**: selección exclusiva del perfil que atiende
+  el flujo de impresión actual. Cambiar esa selección no cambia los checks de
+  los otros perfiles. El contrato actual `print-labels` solo genera etiquetas:
+  no se inventan tipos de trabajo ni se cambian payloads/sockets para simular
+  membretes o despachos. Esos perfiles ya guardan sus preferencias independientes.
 
-- `core.js`: esquema v1, estación UUID aleatoria sin hostname, perfiles y huellas;
-  JSON separado `beta-printer-profiles.json` bajo `app.getPath('userData')`.
-  Escritura a temporal exclusivo, fsync y rename; validación de tamaño/esquema.
-  Datos corruptos/incompatibles desactivan BETA y se conservan hasta un guardado
-  explícito. Errores de escritura no publican un estado parcialmente actualizado.
-  Futuras versiones necesitan migración explícita; no se interpretan como v1.
-- `inventory.js`: `getPrintersAsync()` más un script fijo Win32_Printer CIM.
-  PowerShell sin shell, entradas del usuario ni elevación; timeout de 8 segundos
-  y buffer limitado. Fallo de CIM conserva inventario Electron y diagnóstico.
-- `index.js`: IPC nominado; solo acepta el webContents, frame principal y URL
-  exacta del documento local. Impide navegación, popups y webviews de la ventana.
-  El frontend remoto solo puede abrir esta ventana mediante un launcher separado.
-  Inventario, perfiles y pruebas mantienen IPC exclusivo del documento local.
-  Todo efecto de configuración BETA requiere activación. El modo sin diálogo
-  valida además el remitente registrado y el origen Vercel antes de elegir destino.
-- `preload.js`: puente exclusivo de la ventana local, sin ipcRenderer genérico.
-- `index.html`, `style.css`, `ui.js`: UI local con CSP sin red ni código inline,
-  contenido de impresoras insertado mediante textContent; perfiles en ancho completo.
+Los checks y la selección de destino se guardan inmediatamente. El botón Guardar
+persiste el nombre y la asociación de impresora. Renombrar conserva preferencias;
+revincular o desvincular desarma la impresión silenciosa de ese perfil para que
+el operador confirme de nuevo el nuevo destino. Nuevos perfiles empiezan activos,
+con modo silencioso OFF. Desactivar un perfil también desarma su modo silencioso;
+reactivarlo no lo rearma. Desactivar BETA desarma el modo silencioso de todos,
+conservando perfiles y asociaciones. BETA OFF vuelve al flujo tradicional.
 
-Win32_Printer puede proporcionar nombre, driver, puerto y PNPDeviceID; puede
-omitirlos. No se presenta un serial USB derivado de un Instance ID como serial
-físico. Esta versión no atribuye seriales físicos: se requiere una futura fuente
-fiable que pruebe la correspondencia física. No se exportan metadatos arbitrarios
-ni identificadores de usuario. Estado offline solo cuando CIM lo indica;
-no se interpreta una cola disponible como prueba de conexión física online.
+Eliminar el perfil que recibe etiquetas bloquea los siguientes trabajos hasta
+seleccionar otro destino; no hay reasignación silenciosa a la predeterminada.
+El cuadro global de modo de impresión se eliminó: los controles están en cada
+perfil, con texto visible de modo con diálogo, sin diálogo o pausado.
 
-Estados:
+## Persistencia y migración
 
-| Estado | Criterio |
-| --- | --- |
-| Verificada | Serial físico fiable y driver, únicos; preparado en el resolver, no producido por CIM actual |
-| Probable | Única candidata del driver y mismos nombre, puerto y PnP; no garantiza identidad física |
-| Ambigua | Más de una candidata del driver sin serial único; incluye dos equipos iguales |
-| No encontrada | No hay coincidencia conservadora; requiere revinculación manual |
+`core.js` almacena `beta-printer-profiles.json` bajo `app.getPath('userData')`:
 
-Nombre de cola, USB003 y PnP son pistas mutables. No se guardan cambios de
-asociación por refrescar. Dos impresoras idénticas sin serial no se distinguen
-con certeza tras cambiar puertos. La prueba BETA se bloquea si hay ambigüedad;
-use las pruebas propias de Windows y etiquetado físico para verificar cada equipo
-antes de volver a vincular. Incluso una coincidencia probable puede corresponder
-a otro equipo del mismo modelo si fue intercambiado: verificar físicamente.
+- Esquema v1 con extensión compatible; UUID de estación sin hostname.
+- `labelsProfileId` guarda el destino de etiquetas por ID estable.
+- Cada perfil conserva `id`, `label`, `identity`, `enabled`, `silentEnabled` y
+  `silentQueueConfirmation` independiente.
+- Al leer configuraciones anteriores, se conservan todos los perfiles y sus
+  huellas. La selección global anterior se convierte en destino de etiquetas;
+  su modo silencioso y confirmación se trasladan únicamente a ese perfil.
+  Los demás comienzan activos y con modo silencioso OFF. Si nunca hubo destino
+  global, el perfil llamado Etiquetas se toma como destino inicial.
+- Escritura temporal exclusiva, fsync y rename; tamaño y esquema validados.
+  Configuraciones corruptas/incompatibles desactivan BETA sin bloquear Electron
+  ni la impresión tradicional. No se sobreescriben hasta un guardado explícito.
+- Un fallo de escritura no publica un cambio parcial en memoria.
 
-La prueba muestra destino/contenido, exige confirmación renderer y confirmación
-nativa, actualiza inventario antes y después de la confirmación y rechaza cambios.
-Envía una página, una copia, `silent: false`, deviceName de una cola detectada;
-no modifica la predeterminada. El diálogo nativo permite al operador cambiar
-preferencias/destino: debe verificar allí la misma cola y una copia. El programa
-no puede garantizar cambios que el usuario haga dentro del diálogo del driver.
-Solo una prueba puede estar en curso. Una prueba ya entregada a Windows puede
-finalizar aunque se cierre la pantalla; deshabilitar BETA no cancela el spooler.
-La prueba de identificación nunca se invoca desde sockets y sigue con diálogo
-incluso cuando el modo sin diálogo está activado. No hay agentes ni cambios de drivers.
+## Inventario y dos impresoras idénticas
 
-## Validación reproducible
+`inventory.js` usa `webContents.getPrintersAsync()` y, en Windows, una consulta
+CIM fija Win32_Printer: nombre, driver, puerto, PnP y estado cuando están disponibles.
+PowerShell sin shell, entradas de usuario, elevación ni escrituras al sistema;
+timeout de 8 segundos y buffer limitado. El fallo de CIM permite mostrar el
+inventario Electron con diagnóstico, sin inventar driver, puerto o serial.
+No se interpreta una cola disponible como conexión física online.
 
-```sh
-node --test apps/desktop/beta-printers/test/*.test.js
-find apps/desktop/beta-printers -name '*.js' -exec node --check {} \;
-node --check apps/desktop/main.js
-git diff --check
-```
+La resolución automática distingue probable, ambigua, no encontrada y verificada
+(esta última preparada para una fuente de serial físico fiable, que CIM actual
+no proporciona). Nombre de cola, USB003 y PnP son pistas mutables, no pruebas de
+identidad física. No se generan seriales a partir de Instance IDs.
 
-Las pruebas cubren identidad/collisiones, nombres mutables, corrupción/reinicio,
-esquema inválido/escritura fallida, fallback CIM, IPC con origen/frame falsos,
-modo OFF sin inventario, CRUD, confirmación/cancelación, ambigüedad, una prueba
-concurrente, cambio a OFF durante confirmación, una página no silenciosa y
-comparación del handler contra baseline excluyendo únicamente las dos adiciones
-para opciones de impresión, y preservación del puente original. Se prueba también
-el handler real con dobles Electron: modo con/sin diálogo, payload y márgenes,
-cola seleccionada, errores sin reintentos ni ventanas innecesarias, migración de
-preferencias, persistencia del check y rechazo de destinos ambiguos/offline. También se prueba que el launcher acepte únicamente el
-shell registrado, su frame principal y el origen HTTPS exacto de Vercel, y que ese
-remitente siga sin acceso al IPC de configuración.
+Para dos colas del mismo modelo se permite impresión sin diálogo tras una
+confirmación nativa explícita del perfil, nombre de cola, driver y puerto:
 
-No se agregaron dependencias. Para el acceso web se ejecutaron el build de
-Next.js (incluye TypeScript) y ESLint sobre el componente nuevo:
+1. Exige una única coincidencia exacta de la huella completa guardada, nombre de
+   cola único en el inventario y driver/puerto disponibles.
+2. Informa que se confirma una cola Windows, no la identidad física por serial.
+3. Cancelar no activa el modo ni altera otros perfiles. Aceptar vuelve a consultar
+   el inventario antes de guardar la autorización en ese perfil.
+4. Cambios de nombre, driver, puerto o PnP, colisiones, desconexión y estado offline
+   bloquean el envío. La autorización no se reutiliza para otro perfil/destino.
 
-```sh
-npm exec --workspace=frontend -- eslint app/components/PrinterSettings.tsx
-npm run build --workspace=frontend
-```
+Si se intercambian físicamente equipos sin cambios visibles para Windows, no es
+posible detectar el intercambio: el operador debe verificar nuevamente cada
+cola. La UI muestra «Cola confirmada», nunca «Identidad física verificada».
 
-Node syntax checks siguen aplicándose al módulo Electron. No se ejecutó Electron gráfico, Windows, PowerShell CIM real,
-impresoras físicas ni diálogo del driver en el entorno Linux de implementación.
-No se afirma validación física.
+La prueba de identificación es separada: vista previa, confirmación humana y
+confirmación nativa; una página, una copia, siempre `silent: false`. El diálogo
+del driver puede cambiar opciones y el operador debe verificar destino/copia.
+Para las colas físicamente ambiguas, la prueba BETA sigue bloqueada: usar primero
+la página de prueba de Windows para verificar el equipo antes de autorizarlo.
 
-Antes de uso operativo, verificar en Windows:
+## IPC y flujo de impresión
 
-- Inicio OFF, activar/desactivar y reiniciar con perfiles guardados.
-- Engranaje visible con el shell remoto real, UI y errores de permisos.
-- Inventario de dos equipos iguales, desconexión/cambio de puerto/nueva cola;
-  ambigüedad sin reasignación, revinculación manual y prueba bloqueada si ambigua.
-- Una prueba con cola inequívoca: cancelar ambos diálogos y luego confirmar;
-  verificar físicamente destino, página y copias.
-- Check desmarcado: impresión desde app y sockets conserva selector/layout/ack.
-- Check marcado: impresión directa al perfil elegido sin selector; comprobar
-  destino físico, desconexión, ambigüedad, desmarcar y reiniciar.
-- Archivo corrupto no impide iniciar ni imprimir con el flujo tradicional.
+`index.js` registra IPC nominado para la ventana local: estado, activación BETA,
+inventario, CRUD, ajustes de perfil, selección del destino de etiquetas y prueba.
+Valida tipos/límites y exige webContents, frame principal y URL local exactos.
+Preload aislado, sandbox, contextIsolation, nodeIntegration OFF; CSP sin red,
+URLs externas, popups, navegación ni webviews en la ventana de configuración.
 
-## Acceso desde el frontend de Vercel
+El frontend remoto solo recibe `ivoolvePrinterSettings.open()` en el origen HTTPS
+exacto de Vercel. El proceso principal verifica origen y shell registrado; ese
+launcher solo abre/enfoca la ventana local y no accede al almacén ni al inventario.
+No expone IPC genérico, comandos, rutas, tokens ni secretos.
 
-El componente aislado `frontend/app/components/PrinterSettings.tsx` se monta en
-`frontend/app/layout.tsx`; el engranaje es visible en login, dashboard e impresión,
-incluso al abrir la URL en un navegador. No cambia sockets ni handlers de impresión.
-En navegador muestra un diálogo explicando que el inventario de Windows requiere
-Ivoolve Print de escritorio; no simula impresoras ni guarda vinculaciones ficticias.
+`silent.js` resuelve el perfil dirigido al trabajo. BETA OFF o perfil activo con
+silencioso OFF conserva opciones tradicionales sin enumerar por trabajo. Perfil
+seleccionado desactivado/inexistente devuelve error antes de crear una ventana
+de impresión. En modo silencioso valida origen remoto, consulta inventario y
+aplica únicamente `silent: true` y `deviceName` de ese perfil.
 
-El preload principal añade `window.ivoolvePrinterSettings.open()` solo en
-`https://ivoolve-print-frontend.vercel.app`. El proceso principal verifica además
-webContents registrado, frame principal y origen exacto al recibir la llamada.
-El launcher no admite rutas, URLs, nombres de impresora ni comandos. Su único
-efecto es abrir/enfocar el documento local controlado; no expone el almacén ni
-el inventario al frontend remoto. El menú nativo sigue disponible para estaciones
-que aún cargan una versión anterior del frontend.
+El handler `print-labels` mantiene API HTML, payload, márgenes, layout, callback
+y ACK. No se modifica API, sockets ni frontend de órdenes. Los trabajos existentes
+manuales y recibidos por sockets atraviesan la misma selección local; no se crean
+agentes ni trabajos adicionales. Ante error no hay retry ni fallback silencioso
+que pueda duplicar/redirigir una impresión. Configuración modificada durante
+la enumeración aborta el envío. Trabajos ya aceptados por Windows no se cancelan
+por desactivar después un check.
 
-Para ver el engranaje web debe desplegarse este commit del frontend en Vercel.
-Para abrir la configuración mediante él también debe actualizarse/reiniciarse
-Electron (incluye cambios en preload y registro IPC). Recargar Vercel no actualiza
-el binario ni el proceso Electron instalado. El estado del despliegue Vercel debe
-confirmarse en la plataforma; un push no acredita por sí solo un despliegue.
+## UI Tailwind local y validaciones
 
-## Impresión sin cuadro de diálogo (activación independiente)
-
-Autorización posterior a la fase de inventario: el operador dispone de un check
-local persistente «Imprimir sin cuadro de diálogo» y un selector de perfil.
-Por defecto está OFF, también al cargar el esquema v1 anterior, sin perder
-perfiles. No basta con habilitar BETA: hay que elegir un perfil vinculado y
-marcar el check. La configuración solo puede cambiarse desde la ventana local.
-
-El endpoint actual solo produce etiquetas: todos los trabajos que atraviesen
-`print-labels` (manuales y recibidos por el flujo existente) usan el perfil elegido
-cuando el modo está ON. No se inventa una clasificación Etiquetas/Membretes/Despachos
-a partir del payload. La selección se guarda por ID del perfil, permitiendo renombrarlo.
-
-`silent.js` resuelve conservadoramente la asociación; al activar y en cada trabajo
-sin diálogo se vuelve a consultar el inventario. No se enumera por trabajo si el
-check está OFF. La llamada de impresión original recibe únicamente los overrides
-`silent: true` y `deviceName` desde el perfil local. API HTML, payload, márgenes,
-layout, callback y ACK permanecen iguales. Si no hay perfil/cola inequívoca o
-Windows informa offline, se devuelve error sin imprimir, sin fallback a la
-predeterminada ni apertura automática del diálogo y sin reintento que duplique
-el trabajo. Desactivar BETA desarma también el check; reactivarla no lo rearma.
-
-Cambios de configuración durante la enumeración abortan el trabajo para evitar
-un destino obsoleto. Un trabajo ya aceptado por Electron/Windows no se cancela
-por desmarcar después el check. El estado físico online no está garantizado
-cuando Windows no lo expone. Dos colas iguales sin serial siguen siendo ambiguas respecto a su identidad
-física. Ahora pueden usarse sin diálogo tras confirmar manualmente una cola
-Windows y su puerto exactos; sin esa confirmación el modo sigue bloqueado. No se infiere identidad física de
-USB003 o del nombre de cola. Este modo requiere validación física en Windows.
-
-Para recibir el check es necesario actualizar el repositorio local y reiniciar
-Electron; el despliegue de Vercel por sí solo no cambia el código local.
-
-## Interfaz Electron con Tailwind local
-
-La ventana local dispone de cabecera, navegación por secciones en ventanas amplias,
-resumen de la estación, tarjetas de dispositivos y perfiles, estados de vinculación,
-identificación técnica desplegable, controles del modo de impresión y pantalla OFF.
-Iconos SVG locales, fondos claros y acentos rosados; no usa fuentes remotas ni CDN.
-Los nombres y metadatos de impresora siguen insertándose mediante `textContent`.
-La política CSP y el contrato IPC no cambian. Este cambio visual no modifica
-`main.js`, selección de identidad, persistencia ni lógica de impresión.
-
-`tailwind.css` es la fuente; `style.css` es el CSS compilado que se incluye en git
-para que Electron pueda abrirlo sin ejecutar un build ni consultar la red.
-Se utilizan las dependencias PostCSS/Tailwind ya existentes del monorepo.
-Después de modificar HTML, clases de UI o estilos:
+Interfaz con tarjetas, iconos SVG, estados, contadores, secciones adaptables y
+pantalla OFF. `tailwind.css` es la fuente; `style.css` es el CSS compilado incluido
+en git para ejecutar sin CDN, fuentes remotas ni pasos de build en Windows.
+Se usan las dependencias PostCSS/Tailwind existentes. Los datos se insertan como
+texto, sin HTML de impresoras o usuarios.
 
 ```sh
 node apps/desktop/beta-printers/build-styles.cjs
-node --check apps/desktop/beta-printers/ui.js
+find apps/desktop/beta-printers -name '*.js' -exec node --check {} \;
 node --test apps/desktop/beta-printers/test/*.test.js
 git diff --check
 ```
 
-Verificación visual y funcional de esta interfaz realizada en Chromium headless
-con puente IPC simulado: 1100×800 (ventana habitual), 390×844 (ventana estrecha)
-y 1400×900 (BETA OFF). Se inspeccionaron capturas y se verificaron tarjetas,
-contadores, alta/edición de perfiles, checkbox sin diálogo, refresco y habilitación.
-Sin errores JavaScript ni desbordamiento horizontal a 390 px. Esto valida la UI;
-no acredita drivers, Electron nativo ni impresoras físicas en Windows.
+17 pruebas automatizadas: inventario/fallback CIM, esquema/corrupción/escritura,
+regresión del handler/preload, origen/frame IPC, cancelación/confirmación manual,
+colisiones/offline, persistencia/migración, modos por perfil independientes,
+pausa efectiva de trabajos con/sin diálogo, selección por ID, renombrado y
+reactivación sin activación silenciosa inesperada.
 
-Para ver el nuevo diseño: actualizar el repositorio local y reiniciar Electron.
-No requiere redesplegar el frontend de Vercel ni reinstalar dependencias en una
-estación que ya ejecuta la aplicación.
+La UI se revisó en Chromium con datos e IPC simulados a 1100×800, 390×844 y
+1400×900: checks independientes, controles deshabilitados, CRUD, refresco,
+BETA OFF y ausencia de errores JS/desbordamiento horizontal. No se modificó
+Next/TypeScript y su build no valida esta ventana local. Las pruebas gráficas
+no acreditan Electron nativo, drivers ni hardware Windows.
 
-## Dos impresoras del mismo modelo: confirmación manual de cola Windows
-
-El bloqueo inicial consideraba ambiguo todo el modelo, incluso cuando el operador
-había seleccionado una cola concreta. La activación ahora permite ese caso con
-confirmación nativa explícita del perfil, nombre de cola, driver y puerto.
-Se informa que esto identifica una cola Windows, no una identidad física por serial.
-Cancelar no activa el check ni registra autorización.
-
-Requisitos: exactamente una coincidencia de nombre de cola, driver, puerto, PnP
-y serial guardados; nombre único en el inventario; driver y puerto no vacíos.
-No se usa el puerto solo como identificador. Tras confirmar se vuelve a consultar
-el inventario antes de guardar. La autorización local `silentQueueConfirmation`
-se conserva entre reinicios y solo sirve para esa misma huella de cola.
-Si cambia cualquier atributo de vinculación, desaparece, se duplica el destino
-o Windows informa offline, se bloquea el envío y se exige revisar/revincular.
-Desmarcar el modo o desactivar BETA elimina esa confirmación.
-
-Si dos equipos se intercambian físicamente sin que cambie ningún atributo visible
-para Windows, el software no puede detectar el intercambio: el operador debe
-verificar nuevamente la cola y el equipo. La UI muestra «Cola confirmada», no
-«Identidad física verificada». La prueba de identificación BETA conserva sus
-restricciones previas; use la página de prueba Windows para verificar colas del
-mismo modelo antes de confirmar este modo.
-
-Pruebas adicionales: autorización requerida, destino correcto confirmado,
-confirmación cancelada/aceptada, persistencia, rechazo ante cambios de
-nombre/driver/puerto/PnP, colisiones, offline y revinculación. Total: 15 pruebas
-automatizadas aprobadas con dobles; validación física Windows sigue pendiente.
+Pendiente validar físicamente: reinicio y migración en la estación, dos USB
+iguales, confirmación de cola/puerto, impresión sin diálogo real, perfil pausado,
+cambio de puerto, cancelación del driver y flujo habitual con diálogo.
