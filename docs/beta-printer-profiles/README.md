@@ -32,9 +32,11 @@ Membretes, Despachos o cualquier perfil personalizado) se encuentran:
   autorización de cola. Se necesita perfil activo y una impresora guardada.
 - **Recibir trabajos de etiquetas**: selección exclusiva del perfil que atiende
   el flujo de impresión actual. Cambiar esa selección no cambia los checks de
-  los otros perfiles. El contrato actual `print-labels` solo genera etiquetas:
+  los otros perfiles. El contrato `print-labels` sigue generando solo etiquetas:
   no se inventan tipos de trabajo ni se cambian payloads/sockets para simular
-  membretes o despachos. Esos perfiles ya guardan sus preferencias independientes.
+  membretes o despachos. El flujo de PDF de Membretes tiene su selección independiente.
+- **Recibir membretes de despachos**: dirige la búsqueda e impresión del PDF de
+  despacho al perfil elegido; independiente del destino de etiquetas.
 
 Los checks y la selección de destino se guardan inmediatamente. El botón Guardar
 persiste el nombre y la asociación de impresora. Renombrar conserva preferencias;
@@ -54,7 +56,8 @@ perfil, con texto visible de modo con diálogo, sin diálogo o pausado.
 `core.js` almacena `beta-printer-profiles.json` bajo `app.getPath('userData')`:
 
 - Esquema v1 con extensión compatible; UUID de estación sin hostname.
-- `labelsProfileId` guarda el destino de etiquetas por ID estable.
+- `labelsProfileId` y `letterheadProfileId` guardan destinos independientes por ID
+  estable para etiquetas y PDFs de despacho.
 - Cada perfil conserva `id`, `label`, `identity`, `enabled`, `silentEnabled` y
   `silentQueueConfirmation` independiente, más `paper` con sus ajustes físicos.
 - Al leer configuraciones anteriores, se conservan todos los perfiles y sus
@@ -244,3 +247,9 @@ Al guardar papel se marca como personalizado por el operador, incluso cuando
 se elige Windows, para no sobreescribirlo en migraciones siguientes. Las pruebas
 cubren el preset ancho, la ausencia de intercambio de lados, migración de
 Membretes, conservación de personalizaciones y aislamiento de Etiquetas.
+
+## Buscar membretes por número
+
+El flujo de Membretes ya incluye el input del número diario en el drawer. Enter
+busca e imprime una coincidencia del día usando el PDF original. Configuración,
+límites y validación están en [Membretes de despachos](../dispatch-letterheads/README.md).

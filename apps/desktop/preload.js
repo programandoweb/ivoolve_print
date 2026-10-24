@@ -6,6 +6,9 @@ contextBridge.exposeInMainWorld('api', {
 
 // Only the production shell gets a launcher, never local configuration access.
 if (window.location.origin === 'https://ivoolve-print-frontend.vercel.app') {
+  contextBridge.exposeInMainWorld('ivoolveDispatchPrint', {
+    run: value => ipcRenderer.invoke('dispatch-print:run', value),
+  })
   contextBridge.exposeInMainWorld('ivoolvePrinterSettings', {
     open: () => ipcRenderer.invoke('beta-printers:open-settings'),
   })

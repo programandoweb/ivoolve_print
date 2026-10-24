@@ -41,7 +41,7 @@ test('old v1 bindings and enabled silent authorization migrate to their own prof
 async function runtime(t, options = {}) {
   const dir = temp(t); const store = new Store(dir); const initial = store.read()
   store.write({ ...initial, enabled: options.beta !== false, profiles: initial.profiles.map((p, i) => i ? p : { ...p, paper: options.paper ?? p.paper, identity: options.missing ? null : identity, enabled: options.active !== false, silentEnabled: Boolean(options.silent) }) })
-  const handlers = {}; const windows = []; const printed = []; const requests = []; const styles = []; let inventoryCalls = 0; let open
+  const handlers = {}; const windows = []; const printed = []; const requests = []; const styles = []; let inventoryCalls = 0; let open; let profileController
   class Window {
     constructor() {
       windows.push(this)
@@ -54,10 +54,10 @@ async function runtime(t, options = {}) {
   }
   const electron = { app: { getPath: () => dir, whenReady: () => Promise.resolve() }, BrowserWindow: Window, Menu: { buildFromTemplate: items => { open = items[0].submenu[0].click } }, ipcMain: { handle: (name, fn) => { handlers[name] = fn } }, dialog: { showMessageBox: async () => ({ response: options.calibrationResponse ?? 0 }) } }
   const main = path.resolve(__dirname, '../../main.js')
-  vm.runInNewContext(fs.readFileSync(main, 'utf8'), { __dirname: path.dirname(main), require: name => name === 'electron' ? electron : name === './beta-printers' ? require('../index') : require(name), fetch: async (url, config) => { requests.push({ url, config }); return { ok: true, text: async () => '<html><body>labels</body></html>' } } })
+  vm.runInNewContext(fs.readFileSync(main, 'utf8'), { __dirname: path.dirname(main), require: name => name === 'electron' ? electron : name === './beta-printers' ? require('../index') : name === './dispatch-print' ? { registerScheme() {}, register: options => { profileController = options.profiles; return () => {} } } : require(name), fetch: async (url, config) => { requests.push({ url, config }); return { ok: true, text: async () => '<html><body>labels</body></html>' } } })
   await new Promise(r => setImmediate(r))
   const event = { sender: windows[0].webContents, senderFrame: windows[0].webContents.mainFrame }
-  return { handlers, windows, printed, requests, styles, event, open: () => open(), inventoryCalls: () => inventoryCalls, print: payload => handlers['print-labels'](event, payload) }
+  return { handlers, windows, printed, requests, styles, event, profileController, open: () => open(), inventoryCalls: () => inventoryCalls, print: payload => handlers['print-labels'](event, payload) }
 }
 test('actual main handler: unchecked retains selector/options/payload and skips inventory', async t => {
   for (const options of [{ silent: false }, { silent: true, beta: false }]) {
@@ -263,4 +263,22 @@ test('calibration: native confirmation, one non-silent page to saved device, mod
     }
     assert.deepEqual((await status()).data, before)
   }
+})
+
+test('letterhead plan uses independent Membretes destination, modes and 101x24 stock', async t => {
+  const h = await runtime(t); h.open()
+  const event = { sender: h.windows[1].webContents, senderFrame: h.windows[1].webContents.mainFrame }
+  const invoke = (method, value) => h.handlers[`beta-printers:${method}`](event, value)
+  const before = (await invoke('getStatus')).data
+  const id = before.profiles.find(p => p.label === 'Membretes').id
+  assert.equal(before.letterheadProfileId, id)
+  await invoke('saveProfile', { id, label: 'Membretes', identity })
+  await invoke('setProfileSettings', { id, enabled: true, silentEnabled: true })
+  const plan = await h.profileController.getPrintPlan(h.event, 'letterhead')
+  assert.equal(plan.options.deviceName, 'Labels'); assert.equal(plan.options.silent, true)
+  assert.equal(plan.paper.widthMm, 101); assert.equal(plan.paper.heightMm, 24)
+  assert.equal((await h.profileController.getPrintPlan(h.event)).options.silent, undefined)
+  await invoke('setProfileSettings', { id, enabled: false, silentEnabled: false })
+  await assert.rejects(h.profileController.getPrintPlan(h.event, 'letterhead'), /desactivado/)
+  await assert.rejects(h.handlers['beta-printers:setLetterheadProfile'](h.event, id), /Origen/)
 })

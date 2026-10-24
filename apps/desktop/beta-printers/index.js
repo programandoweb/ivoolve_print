@@ -54,6 +54,13 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
       if (!profile?.enabled) throw Error('Perfil desactivado o desconocido')
       return store.write({ ...state, labelsProfileId: id })
     },
+    setLetterheadProfile(id) {
+      if (!text(id, 64)) throw Error('Perfil inválido')
+      const state = store.read()
+      const profile = state.profiles.find(p => p.id === id)
+      if (!profile?.enabled) throw Error('Perfil desactivado o desconocido')
+      return store.write({ ...state, letterheadProfileId: id })
+    },
     async refresh() { return inventory(window.webContents) },
     saveProfile(value) {
       if (!value || !text(value.id, 64) || !text(value.label, 80) || !value.label.trim() || !(value.identity === null || validIdentity(value.identity))) throw Error('Perfil inválido')
@@ -157,21 +164,23 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     shell.setMenu(Menu.buildFromTemplate([{ label: '⚙ Impresoras BETA', submenu: [{ label: 'Configurar perfiles locales…', click: open }] }]))
     shell.setMenuBarVisibility(true)
   }
-  attach.getPrintPlan = async (event) => {
+  attach.getPrintPlan = async (event, kind = 'labels') => {
     const state = store.read()
-    const profile = printProfile(state)
+    if (!['labels', 'letterhead'].includes(kind)) throw Error('Tipo de impresión inválido')
+    if (kind === 'letterhead' && (!state.enabled || !state.letterheadProfileId)) throw Error('Habilita BETA y selecciona un perfil para recibir membretes en la configuración de impresoras.')
+    const profile = printProfile(state, kind === 'letterhead' ? state.letterheadProfileId : state.labelsProfileId)
     if (!profile) return { options: {}, css: '' }
     const paper = profile.paper ?? defaultPaper(profile.label)
     const css = paperCss(paper)
     const options = paperOptions(paper, profile.silentEnabled)
-    if (!profile.silentEnabled && paper.source === 'driver' && !css) return { options, css }
+    if (!profile.silentEnabled && paper.source === 'driver' && !css) return { options, css, paper }
     let allowedOrigin = false
     try { allowedOrigin = new URL(event.senderFrame.url).origin === 'https://ivoolve-print-frontend.vercel.app' } catch {}
     if (!authorizedShells.has(event.sender) || event.senderFrame !== event.sender.mainFrame || !allowedOrigin) throw Error('Origen no autorizado para impresión configurada')
-    if (!profile.silentEnabled) return { options, css }
+    if (!profile.silentEnabled) return { options, css, paper }
     const result = await inventory(event.sender)
     if (store.read() !== state) throw Error('Configuración modificada durante la impresión. Vuelva a enviar el trabajo.')
-    return { options: { ...silentOptions(state, result.printers), ...options }, css }
+    return { options: { ...silentOptions(state, result.printers, profile.id), ...options }, css, paper }
   }
   attach.getPrintOptions = async event => (await attach.getPrintPlan(event)).options
   return attach

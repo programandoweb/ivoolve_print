@@ -1,0 +1,1 @@
+*{box-sizing:border-box}html,body{margin:0;padding:0;background:white}.pdf-page{position:relative;margin:0;overflow:hidden;break-after:page;page-break-after:always}.pdf-page:last-child{break-after:auto;page-break-after:auto}.pdf-page canvas{position:absolute;display:block} @media screen{body{background:#e2e8f0}.pdf-page{background:white;margin:10px auto}}

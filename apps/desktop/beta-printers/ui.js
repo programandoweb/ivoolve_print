@@ -155,7 +155,10 @@ function renderProfiles() {
     routing.onchange = () => run(async () => { try { state = await call('setLabelsProfile', profile.id) } finally { renderProfiles() } })
     const routeLabel = el('label', null, 'profile-check profile-route'); routeLabel.append(routing, el('span', 'Recibir trabajos de etiquetas'))
     const modeText = !profile.enabled ? 'Pausado: no se enviarán trabajos a este perfil.' : profile.silentEnabled ? 'Sin diálogo: envío directo a la impresora guardada.' : 'Con diálogo: Windows solicitará seleccionar la impresora.'
-    controls.append(activeLabel, silentLabel, routeLabel, el('p', modeText, 'binding-note'))
+    const letterhead = el('input'); letterhead.type = 'radio'; letterhead.name = 'letterhead-destination'; letterhead.checked = state.letterheadProfileId === profile.id; letterhead.disabled = !profile.enabled
+    letterhead.onchange = () => run(async () => { try { state = await call('setLetterheadProfile', profile.id) } finally { renderProfiles() } })
+    const letterheadLabel = el('label', null, 'profile-check'); letterheadLabel.append(letterhead, el('span', 'Recibir membretes de despachos'))
+    controls.append(activeLabel, silentLabel, routeLabel, letterheadLabel, el('p', modeText, 'binding-note'))
     body.append(controls, paperSettings(profile))
     const save = button('Guardar', 'check', 'btn btn-primary')
     save.onclick = () => run(async () => { state = await call('saveProfile', { id: profile.id, label: label.value, identity: select.value === '' ? null : printers[Number(select.value)].identity }); renderProfiles(); $('message').textContent = 'Perfil guardado correctamente.' })

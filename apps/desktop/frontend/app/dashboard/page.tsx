@@ -18,6 +18,7 @@ import ProductSummary from './ProductSummary'
 import ProductionStats from './ProductionStats'
 import ProductionHeader from './ProductionHeader'
 import ProductionActions from './ProductionActions'
+import LetterheadSearch from './LetterheadSearch'
 import RequisitionAutocomplete from './RequisitionAutocomplete'
 import useRequisitionCache from '@/hooks/useRequisitionCache'
 import SearchMethodTabs, {
@@ -560,7 +561,7 @@ export default function Page() {
 
       {!data && (
         <form onSubmit={handleSubmit} className="mx-auto mb-8 flex w-full max-w-xl flex-col">
-          {searchMethod !== '' && (
+          {searchMethod !== '' && searchMethod !== 'letterhead' && (
             searchMethod === 'batch_code' ? (
               <RequisitionAutocomplete
                 value={search}
@@ -602,8 +603,8 @@ export default function Page() {
         (drawerOpen && drawerOpen?.render === 'drawer' && !data) ||
         (drawerOpen && drawerOpen?.render === 'drawer2' && tag)
       ) && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
-          <div className="h-full w-full max-w-md bg-white p-6 shadow-2xl">
+        <div className={`fixed inset-0 ${searchMethod === 'letterhead' ? 'z-[70]' : 'z-50'} flex justify-end bg-black/40`}>
+          <div className="h-full w-full max-w-md overflow-y-auto bg-white p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-lg font-bold text-slate-800">
                 {searchMethodConfig.label}
@@ -622,6 +623,8 @@ export default function Page() {
                 Cerrar
               </button>
             </div>
+
+            {searchMethod === 'letterhead' && <LetterheadSearch token={user?.token} />}
 
             {drawerOpen?.render === 'drawer2' && tag ? (
               <div className="space-y-4">
@@ -677,11 +680,11 @@ export default function Page() {
                   {printing ? 'Imprimiendo...' : 'Imprimir'}
                 </button>
               </div>
-            ) : (
+            ) : searchMethod !== 'letterhead' ? (
               <div className="text-sm text-slate-600">
                 Contenido dinámico para <b>{searchMethodConfig.label}</b>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       )}

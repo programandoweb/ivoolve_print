@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('betaPrinters', Object.freeze({
   setProfileSettings: value => invoke('setProfileSettings', value),
   savePaper: value => invoke('savePaper', value),
   calibrateProfile: value => invoke('calibrateProfile', value),
+  setLetterheadProfile: id => invoke('setLetterheadProfile', id),
   setLabelsProfile: id => invoke('setLabelsProfile', id),
   refresh: () => invoke('refresh'), saveProfile: value => invoke('saveProfile', value),
   removeProfile: id => invoke('removeProfile', id), testPrint: value => invoke('testPrint', value),
