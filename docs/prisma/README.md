@@ -1,23 +1,39 @@
-# Prisma · Asistente de impresión
+# Prisma · Conectividad antes de impresión real
 
-Prisma está integrado en el dashboard de Ivoolve Print y el controlador Electron, con configuración persistente aislada en Laravel. La pantalla administrativa es `/dashboard/agents/prisma` en IvoolveFlow (requiere permiso `agents.catalog.manage`).
+## Objetivo de esta fase
+Ivoolve Print presenta **4 luces** en su dashboard:
+- **Conexión**: heartbeat autenticado Electron → Laravel (cada ~3,5 segundos).
+- **Etiqueta**: se enciende al recibir y confirmar `Prueba etiqueta`.
+- **Membrete**: se enciende al recibir y confirmar `Prueba membrete`.
+- **Canal**: se enciende al recibir y confirmar `Prueba canal` (también acepta `Prueba conexión`).
 
-## Instalación
-1. Desplegar IvoolveFlow (`/var/www/deploy-ivoolve-flow.sh`) y ejecutar la migración aditiva `2026_10_24_150000_create_printing_agent_settings_table.php` con `php artisan migrate --force` en backend; comprobar rutas y permisos.
-2. Confirmar `GEMINI_API_KEY` y caché persistente compartida. Abrir Prisma en administración, revisar el modelo y pulsar **Probar conexión real**. Credencial y errores del proveedor nunca se entregan al frontend.
-3. Actualizar Electron (`git pull --ff-only origin main && npm ci`) y reiniciar desde los scripts existentes; actualizar el frontend remoto mediante su despliegue habitual Vercel.
-4. En cada estación Windows, comprobar los perfiles Etiquetas y Membretes, la cola seleccionada y el modo silencioso. **No se ejecuta ningún trabajo físico automáticamente al instalar.**
+Las luces de prueba se apagan tras 18 segundos. Laravel solo considera una estación en línea si su heartbeat tiene menos de 25 segundos. Los eventos caducan a los 50 segundos. Se requiere un acuse de Electron para considerarlos recibidos; **ninguna prueba genera HTML, PDF, cola Windows o trabajo físico**.
 
-## Uso
-- «Imprime 3 etiquetas del código 123».
-- «Imprime el membrete 02».
-- «Imprime los membretes 02 y 03»: confirmar la lista.
-- Si hay coincidencias múltiples, elegir una; cancelar no repite trabajos emitidos.
+## Orígenes de señales
+1. **Chat del agente en IvoolveFlow:** `/dashboard/agents/prisma` → pestaña Chat → Abrir chat.
+2. **WhatsApp dedicado a Prisma:** misma PWA → pestaña WhatsApp → vincular sesión `agent_prisma` y autorizar remitentes.
+3. **Chat del propio Ivoolve Print:** botón Prisma en dashboard.
 
-El mensaje "enviado a la cola" no certifica salida física. Ante timeout o resultado incierto, revisar el spooler antes de enviar otra orden. La impresión manual sigue disponible aunque Prisma esté desactivado o falle Gemini.
+Solo se aceptan comandos de diagnóstico deterministas: `Prueba etiqueta`, `Prueba membrete`, `Prueba canal`. Otros mensajes no pueden crear planes reales de impresión (backend devuelve 423 a `claim`).
 
-## Aislamiento
-`apps/desktop/prisma-agent` conserva las únicas dos clases de trabajo y el puente IPC por ventana/origen, y no reconfigura otros agentes. El estado se obtiene mediante GET autenticado a `/api/v1/printing-agent/status`. Perfil, medidas y orientación se determinan exclusivamente por los handlers Electron ya existentes.
+## Preparación
+1. Desplegar cambios de `ivoolveFlow`, ejecutar migración aditiva `2026_10_26_090000_create_prisma_connectivity_tables.php`.
+2. Desplegar frontend Next de Print (Vercel).
+3. En cada estación Windows ejecutar `git pull --ff-only origin main`, `npm ci` en la raíz y reiniciar Electron con `npm exec --workspace=desktop -- electron .` (o mediante el método normal instalado).
+4. Abrir Print, iniciar sesión, comprobar luz **Conexión**.
+5. Enviar cada una de las tres frases de prueba desde el chat PWA o WhatsApp. Confirmar que la luz correspondiente se ilumine y que desde el chat PWA aparezca el acuse de la estación.
 
-## Validaciones pendientes
-Ejecutar `node --test apps/desktop/prisma-agent/test/*.test.js apps/desktop/beta-printers/test/*.test.js apps/desktop/dispatch-print/test/*.test.js`, tests PHP, Next build y pruebas físicas en Windows. Los commits no equivalen a despliegue Vercel/Windows ni acreditan que el proveedor esté conectado.
+La estación usa un UUID guardado en `app.getPath('userData')/prisma-station.id`, separado de los perfiles de impresora. El UUID no se expone por el preload al frontend remoto. La API de Prisma usa el JWT del usuario y valida origen/ventana IPC. El backend mantiene una lista blanca para WhatsApp.
+
+## Fuera de alcance
+No se habilitó impresión automática ni IA con acceso a impresoras. Los perfiles, tamaños, silent/dialog, búsqueda manual y spooler de Windows mantienen su comportamiento actual. El heartbeat no acredita conectividad con una impresora física ni con Gemini. El push a GitHub y un build Vercel tampoco prueban por sí solos Laravel, Baileys o las estaciones Windows.
+
+## Tests
+```bash
+node --test apps/desktop/prisma-agent/test/*.test.js \
+  apps/desktop/beta-printers/test/*.test.js \
+  apps/desktop/dispatch-print/test/*.test.js
+npm run build --workspace=frontend
+```
+
+Si el backend no tiene las migraciones o una estación Windows no está ejecutando el Electron actualizado, las luces deben permanecer apagadas.
