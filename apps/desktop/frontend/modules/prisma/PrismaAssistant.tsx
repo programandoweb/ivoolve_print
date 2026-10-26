@@ -5,7 +5,7 @@ import { FiMessageSquare, FiPrinter, FiSend, FiX } from 'react-icons/fi'
 import { prismaService, type PrismaResult } from './prisma.service'
 
 type Message = { role: 'user' | 'assistant'; text: string }
-const greeting: Message = { role: 'assistant', text: 'Soy Prisma. Estamos comprobando la conexión con Ivoolve Print. Escribe «Prueba etiqueta», «Prueba membrete» o «Prueba canal». Durante esta fase NO imprimiré documentos.' }
+const greeting: Message = { role: 'assistant', text: 'Soy Prisma. Puedes probar la conexión con «Prueba etiqueta», «Prueba membrete» o «Prueba canal». También puedo verificar si existe «Membrete 02» o «Etiqueta 123» escribiendo «Imprime membrete 02» o «Imprime etiqueta 123». Es una simulación: NO imprimiré ningún documento.' }
 
 export default function PrismaAssistant({ token }: { token?: string }) {
   const [open, setOpen] = useState(false)
@@ -61,7 +61,7 @@ export default function PrismaAssistant({ token }: { token?: string }) {
   async function perform(action: () => Promise<void>) {
     if (locked.current) return
     locked.current = true; setBusy(true)
-    try { await action() } catch (error) { append(error instanceof Error ? error.message : 'No fue posible contactar a Prisma. No se reintentó la impresión.') }
+    try { await action() } catch (error) { append(error instanceof Error ? error.message : 'No fue posible contactar a Prisma. No se reintentó la simulación.') }
     finally { locked.current = false; setBusy(false) }
   }
   async function submit() {
@@ -140,7 +140,7 @@ export default function PrismaAssistant({ token }: { token?: string }) {
         </div>
         <form onSubmit={event => { event.preventDefault(); void submit() }} className="border-t border-slate-200 p-4">
           <p className="mb-3 text-xs text-slate-500">Modo diagnóstico: ninguna prueba genera un PDF o envía trabajos al spooler.</p>
-          <div className="flex gap-2"><input ref={input} aria-label="Mensaje para Prisma" value={text} onChange={event => setText(event.target.value)} disabled={busy || !!plan || !!selection || agent?.available === false} maxLength={1000} placeholder="Prueba etiqueta" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 outline-none focus:border-pink-500 disabled:bg-slate-100" /><button type="submit" aria-label="Enviar a Prisma" disabled={busy || !text.trim() || !!plan || !!selection || agent?.available === false} className="rounded-xl bg-pink-600 px-4 text-white hover:bg-pink-700 disabled:opacity-40"><FiSend /></button></div>
+          <div className="flex gap-2"><input ref={input} aria-label="Mensaje para Prisma" value={text} onChange={event => setText(event.target.value)} disabled={busy || !!plan || !!selection || agent?.available === false} maxLength={1000} placeholder="Prueba etiqueta o Imprime membrete 02" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 outline-none focus:border-pink-500 disabled:bg-slate-100" /><button type="submit" aria-label="Enviar a Prisma" disabled={busy || !text.trim() || !!plan || !!selection || agent?.available === false} className="rounded-xl bg-pink-600 px-4 text-white hover:bg-pink-700 disabled:opacity-40"><FiSend /></button></div>
         </form>
       </section>
     </div>}
