@@ -14,6 +14,8 @@ function setup(options = {}) {
     requests.push({ url, config }); const data = config.body ? JSON.parse(config.body) : null
     if (options.fetchWait) await options.fetchWait
     if (options.httpError) return new Response(JSON.stringify({ message: options.errorMessage || 'No disponible' }), { status: options.httpError })
+    if (url.endsWith('/station/poll')) return Response.json({data: {connected: true, signals: options.signals || [{receipt_id: 10, signal_id: 3, kind: 'labels', source: 'chat', created_at: '2026-10-26 08:00:00'}]}})
+    if (url.endsWith('/station/acknowledge')) return Response.json({data: {acknowledged: data.receipt_ids.length}})
     if (url.endsWith('/status')) return Response.json({ data: { slug: 'prisma', name: 'Prisma', enabled: options.disabled !== true, available: options.disabled !== true, configured: true, provider: 'gemini', model: 'gemini-2.5-flash', reason: options.disabled ? 'Desactivado' : null } })
     if (url.endsWith('/interpret')) return Response.json({ data: { message: 'Preparado', commands: options.work || [member('02')], requires_confirmation: false, plan_token: 'sealed', expires_at: Date.now() / 1000 + 120 } })
     if (claims.has(data.plan_token)) return Response.json({ message: 'Esta solicitud ya fue utilizada.' }, { status: 409 })
@@ -25,7 +27,7 @@ function setup(options = {}) {
     printLetterhead: async (_, value) => { calls.push({ kind: 'letterhead', value }); if (options.printWait) await options.printWait
       if (options.duplicates && !value.dispatchId) return { ok: true, status: 'choose', candidates: [{ id: 7, number: value.number, kind: 'Envío', name: 'Fixture' }, { id: 8, number: value.number, kind: 'Domicilio', name: 'Fixture 2' }] }
       return { ok: !options.memberFail, error: options.memberFail ? 'No se encontró el despacho.' : undefined }
-    }, fetchImpl })(shell)
+    }, stationId: '123e4567-e89b-12d3-a456-426614174000', fetchImpl })(shell)
   const invoke = (action, data = {}) => handlers[`prisma:${action}`](event, { token: TOKEN, ...data })
   return { handlers, event, contents, calls, requests, profiles, invoke, execute: () => invoke('execute', { plan_token: 'sealed', confirmed: false }) }
 }
@@ -101,5 +103,32 @@ test('status reads isolated backend configuration without starting a print job',
   assert.equal(status.agent.slug, 'prisma')
   assert.equal(h.requests[0].config.method, 'GET')
   assert.equal(h.requests[0].config.body, undefined)
+  assert.equal(h.calls.length, 0)
+})
+
+test('heartbeat and receipt of connectivity signals never access any printer handler', async () => {
+  const h = setup({signals: [
+    {receipt_id: 10, signal_id: 3, kind: 'labels', source: 'whatsapp', created_at: '2026-10-26 08:00:00'},
+    {receipt_id: 11, signal_id: 4, kind: 'letterhead', source: 'chat', created_at: '2026-10-26 08:00:00'},
+    {receipt_id: 12, signal_id: 5, kind: 'channel', source: 'print', created_at: '2026-10-26 08:00:00'},
+  ]})
+  const result = await h.invoke('poll')
+  assert.equal(result.ok, true)
+  assert.equal(result.connected, true)
+  assert.deepEqual(result.signals.map(s => s.kind), ['labels', 'letterhead', 'channel'])
+  const ack = await h.invoke('acknowledge', {receipt_ids: [10, 11, 12]})
+  assert.equal(ack.acknowledged, 3)
+  assert.equal(h.calls.length, 0)
+  assert.equal(h.profiles.length, 0)
+  assert.ok(h.requests.every(r => r.config.headers.Authorization === `Bearer ${TOKEN}`))
+  assert.deepEqual(h.requests.map(r => new URL(r.url).pathname.split('/').pop()), ['poll', 'acknowledge'])
+})
+test('invalid diagnostic receipt list is blocked before any API call', async () => {
+  const h = setup()
+  for (const ids of [[0], [-1], ['1'], [], Array(21).fill(2)]) {
+    const result = await h.invoke('acknowledge', {receipt_ids: ids})
+    assert.equal(result.ok, false)
+  }
+  assert.equal(h.requests.length, 0)
   assert.equal(h.calls.length, 0)
 })
