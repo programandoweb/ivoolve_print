@@ -47,6 +47,17 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
       }
       return store.write(next)
     },
+    setPrismaEnabled(value) {
+      if (!value || !text(value.id, 64) || typeof value.enabled !== 'boolean') throw Error('Permiso Prisma inválido')
+      const state = store.read()
+      const profile = state.profiles.find(p => p.id === value.id)
+      if (!profile) throw Error('Perfil desconocido')
+      if (value.enabled && (!state.enabled || !profile.enabled || !profile.identity)) {
+        throw Error('Vincula y activa el perfil antes de autorizar Prisma.')
+      }
+      return store.write({ ...state, profiles: state.profiles.map(p =>
+        p.id === value.id ? { ...p, prismaEnabled: value.enabled } : p) })
+    },
     setLabelsProfile(id) {
       if (!text(id, 64)) throw Error('Perfil inválido')
       const state = store.read()
@@ -69,7 +80,7 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
       if (state.profiles.some(p => p.id !== id && p.label.toLocaleLowerCase() === value.label.trim().toLocaleLowerCase())) throw Error('El nombre del perfil ya existe')
       const previous = state.profiles.find(p => p.id === id)
       const unchanged = previous && ((previous.identity === null && value.identity === null) || sameIdentity(previous.identity, value.identity))
-      const profile = { paper: previous?.paper ?? defaultPaper(value.label), paperCustomized: previous?.paperCustomized ?? false, id, label: value.label.trim(), identity: value.identity, enabled: previous?.enabled ?? true, silentEnabled: unchanged ? previous.silentEnabled : false, silentQueueConfirmation: unchanged ? previous.silentQueueConfirmation : null }
+      const profile = { paper: previous?.paper ?? defaultPaper(value.label), paperCustomized: previous?.paperCustomized ?? false, id, label: value.label.trim(), identity: value.identity, enabled: previous?.enabled ?? true, silentEnabled: unchanged ? previous.silentEnabled : false, silentQueueConfirmation: unchanged ? previous.silentQueueConfirmation : null, prismaEnabled: unchanged ? previous.prismaEnabled ?? false : false }
       return store.write({ ...state, profiles: [...state.profiles.filter(p => p.id !== id), profile] })
     },
     savePaper(value) {
@@ -181,6 +192,26 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     const result = await inventory(event.sender)
     if (store.read() !== state) throw Error('Configuración modificada durante la impresión. Vuelva a enviar el trabajo.')
     return { options: { ...silentOptions(state, result.printers, profile.id), ...options }, css, paper }
+  }
+  // Strictly scoped to Prisma-supervised jobs; never inherits silentEnabled.
+  attach.getPrismaPrintPlan = async (event, kind = 'labels') => {
+    let origin = ''
+    try { origin = new URL(event.senderFrame.url).origin } catch {}
+    if (!authorizedShells.has(event.sender) || event.senderFrame !== event.sender.mainFrame
+        || origin !== 'https://ivoolve-print-frontend.vercel.app') throw Error('Origen Prisma no autorizado')
+    const state = store.read()
+    if (!state.enabled) throw Error('Configuración de impresoras desactivada')
+    const id = kind === 'labels' ? state.labelsProfileId : kind === 'letterhead' ? state.letterheadProfileId : null
+    const profile = printProfile(state, id)
+    if (!profile?.prismaEnabled || !profile.identity) throw Error('Prisma no está autorizado en el perfil local de impresora')
+    const result = await inventory(event.sender)
+    if (state !== store.read()) throw Error('El perfil cambió durante la validación')
+    const matched = resolve(profile.identity, result.printers)
+    if (!['verified', 'probable'].includes(matched.state)) throw Error('Impresora no identificada de forma unívoca')
+    if (matched.candidates.length !== 1) throw Error('Existen impresoras ambiguas; verifique el perfil en Impresoras BETA')
+    if (/offline/i.test(matched.candidates[0]?.status || '')) throw Error('Windows indica que la impresora está fuera de línea')
+    const paper = profile.paper ?? defaultPaper(profile.label)
+    return { options: { ...paperOptions(paper, false), silent: false }, css: paperCss(paper), paper }
   }
   attach.getPrintOptions = async event => (await attach.getPrintPlan(event)).options
   return attach
