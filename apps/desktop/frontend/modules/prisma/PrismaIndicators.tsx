@@ -57,6 +57,7 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
           const at = Date.now()
           const reports = result.signals.filter(s => s.lookup_status)
           if (reports.length) {
+            setSimulation(null)
             const last = reports[reports.length - 1]
             setLookupResult({
               status: last.lookup_status!,
@@ -70,6 +71,7 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
           }
           const simulations = result.signals.filter(s => s.document_number && !s.lookup_status && ['labels', 'letterhead'].includes(s.kind))
           if (simulations.length) {
+            setLookupResult(null)
             const last = simulations[simulations.length - 1]
             setSimulation({kind: last.kind, number: last.document_number!, source: last.source, at})
           }
