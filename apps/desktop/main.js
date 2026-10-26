@@ -45,7 +45,7 @@ function createWindow() {
   win.loadURL('https://ivoolve-print-frontend.vercel.app')
 }
 
-async function printLabels(_event, payload) {
+async function printLabels(_event, payload, context = {}) {
   try {
     const response = await fetch('http://localhost:3031/api/print/labels', {
       method: 'POST',
@@ -65,7 +65,9 @@ async function printLabels(_event, payload) {
       }
     }
 
-    const { options: printerOptions, css: profileCss } = await attachBetaPrinters.getPrintPlan(_event)
+    const { options: printerOptions, css: profileCss } = context.prismaSupervised === true
+      ? await attachBetaPrinters.getPrismaPrintPlan(_event, 'labels')
+      : await attachBetaPrinters.getPrintPlan(_event)
 
     const printWindow = new BrowserWindow({
       show: false,
@@ -92,6 +94,7 @@ async function printLabels(_event, payload) {
             marginType: 'none',
           },
           ...printerOptions,
+          ...(context.prismaSupervised === true ? { silent: false, copies: 1 } : {}),
         },
         (success, errorType) => {
           printWindow.close()
