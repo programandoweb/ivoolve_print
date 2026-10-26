@@ -1,7 +1,7 @@
 export type Command = { kind: 'labels' | 'letterhead'; number: string; quantity: number }
 export type Candidate = { id: number; number: string; kind: string; name: string }
 export type JobResult = Command & { ok: boolean; message: string }
-export type PrismaSignal = {receipt_id: number; signal_id: number; kind: 'labels' | 'letterhead' | 'channel'; source: 'chat' | 'whatsapp' | 'print'; document_number?: string | null; created_at: string}
+export type PrismaSignal = {receipt_id: number; signal_id: number; kind: 'labels' | 'letterhead' | 'channel' | 'lookup'; source: 'chat' | 'whatsapp' | 'print'; document_number?: string | null; lookup_status?: 'found' | 'not_found' | 'choose' | null; document_title?: string | null; document_variant?: string | null; document_query?: string | null; created_at: string}
 export type PrismaPoll = {ok: boolean; connected?: boolean; signals?: PrismaSignal[]; error?: string}
 export type PrismaAcknowledgement = {ok: boolean; acknowledged?: number; error?: string}
 export type PrismaAgentStatus = { slug: string; name: string; enabled: boolean; available: boolean; configured: boolean; provider: string; model: string; reason: string | null }
