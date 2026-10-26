@@ -128,7 +128,7 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
     {notice && <div role="status" aria-live="polite" className={`mt-3 rounded-xl border px-4 py-3 text-sm ${noticeColor}`}>
       <strong>{notice.status === 'found' ? (noticeIsMembrete ? 'Membrete encontrado' : 'Etiqueta encontrada') : notice.status === 'not_found' ? (noticeIsMembrete ? 'Membrete no encontrado' : 'Etiqueta no encontrada') : notice.status === 'choose' ? 'Selección necesaria' : 'Error de consulta'}:</strong>{' '}
       {noticeMessage}
-      <span className="ml-2 text-xs">Origen: {notice.source || 'manual'}. No se envió ninguna impresión física.</span>
+      <span className="ml-2 text-xs">Origen: {notice.source || 'manual'}. La consulta y la simulación no imprimen.</span>
     </div>}
     {simulation && <div role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
       <strong>{'Simulación de conectividad confirmada'}:</strong>{' '}
