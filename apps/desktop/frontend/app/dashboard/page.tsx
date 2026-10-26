@@ -165,6 +165,11 @@ export default function Page() {
       return response
     } catch (error) {
       console.error(error)
+      if (searchMethod === 'tag') {
+        setTag(null)
+        setTagCandidates([])
+        setTagLookupFeedback({status:'error', query:searchValue.trim(), source:'manual', at:Date.now()})
+      }
       return null
     } finally {
       setLoading(false)
