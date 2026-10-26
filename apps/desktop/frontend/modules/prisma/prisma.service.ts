@@ -1,6 +1,9 @@
 export type Command = { kind: 'labels' | 'letterhead'; number: string; quantity: number }
 export type Candidate = { id: number; number: string; kind: string; name: string }
 export type JobResult = Command & { ok: boolean; message: string }
+export type PrismaSignal = {receipt_id: number; signal_id: number; kind: 'labels' | 'letterhead' | 'channel'; source: 'chat' | 'whatsapp' | 'print'; created_at: string}
+export type PrismaPoll = {ok: boolean; connected?: boolean; signals?: PrismaSignal[]; error?: string}
+export type PrismaAcknowledgement = {ok: boolean; acknowledged?: number; error?: string}
 export type PrismaAgentStatus = { slug: string; name: string; enabled: boolean; available: boolean; configured: boolean; provider: string; model: string; reason: string | null }
 export type PrismaResult = {
   ok: boolean; error?: string; message?: string; agent?: PrismaAgentStatus; reset_context?: boolean
@@ -12,6 +15,8 @@ declare global {
   interface Window {
     ivoolvePrisma?: {
       status: (value: { token: string }) => Promise<PrismaResult>
+      poll: (value: { token: string }) => Promise<PrismaPoll>
+      acknowledge: (value: {token: string; receipt_ids: number[]}) => Promise<PrismaAcknowledgement>
       interpret: (value: { token: string; text: string; history: string[] }) => Promise<PrismaResult>
       execute: (value: { token: string; plan_token: string; confirmed: boolean }) => Promise<PrismaResult>
       choose: (value: { token: string; dispatchId: number }) => Promise<PrismaResult>
@@ -25,6 +30,8 @@ function bridge() {
 }
 export const prismaService = {
   status: (token: string) => bridge().status({ token }),
+  poll: (token: string) => bridge().poll({token}),
+  acknowledge: (token: string, receipt_ids: number[]) => bridge().acknowledge({token, receipt_ids}),
   interpret: (token: string, text: string, history: string[]) => bridge().interpret({ token, text, history }),
   execute: (token: string, plan: PrismaResult, confirmed: boolean) => {
     if (!plan.plan_token || !plan.expires_at || plan.expires_at * 1000 <= Date.now()) throw Error('La solicitud venció. Escríbela nuevamente.')

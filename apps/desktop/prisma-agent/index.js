@@ -21,7 +21,7 @@ function commands(value) {
   if (copies > 100) throw Error('El límite por solicitud es de 100 impresiones.')
   return value
 }
-function register({ ipcMain, profiles, printLabels, printLetterhead, fetchImpl = fetch, now = () => new Date() }) {
+function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, fetchImpl = fetch, now = () => new Date() }) {
   const shells = new WeakSet(); const busy = new WeakSet(); const sessions = new WeakMap()
   function authorize(event) {
     let origin
@@ -31,7 +31,7 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, fetchImpl =
   async function request(action, auth, data, method = 'POST') {
     token(auth)
     let response
-    try { response = await fetchImpl(BASE + action, { method, headers: { Accept: 'application/json', ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${auth}` }, ...(method === 'POST' ? { body: JSON.stringify(data) } : {}), redirect: 'error', signal: AbortSignal.timeout(90000) }) } catch { throw Error('No fue posible contactar a Prisma. Revisa la conexión; no se reintentó el envío.') }
+    try { response = await fetchImpl(BASE + action, { method, headers: { Accept: 'application/json', ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${auth}` }, ...(method === 'POST' ? { body: JSON.stringify(data) } : {}), redirect: 'error', signal: AbortSignal.timeout(action.startsWith('station/') ? 5000 : 90000) }) } catch { throw Error('No fue posible contactar a Prisma. Revisa la conexión; no se reintentó el envío.') }
     const body = await bytes(response, 256 * 1024)
     let result
     try { result = JSON.parse(body.toString('utf8')) } catch { throw Error('Prisma devolvió una respuesta no válida. Actualiza el backend.') }
@@ -77,18 +77,33 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, fetchImpl =
   function handle(channel, handler) {
     ipcMain.handle(channel, async (event, value) => {
       authorize(event)
-      if (busy.has(event.sender)) return { ok: false, error: 'Prisma está procesando una solicitud. Espera a que termine.' }
+      const diagnostic = channel === 'prisma:poll' || channel === 'prisma:acknowledge'
+      if (!diagnostic && busy.has(event.sender)) return { ok: false, error: 'Prisma está procesando una solicitud. Espera a que termine.' }
       if (sessions.has(event.sender) && ['prisma:interpret', 'prisma:execute'].includes(channel)) return { ok: false, error: 'Selecciona o cancela el membrete pendiente antes de otra solicitud.' }
-      busy.add(event.sender)
+      if (!diagnostic) busy.add(event.sender)
       try { return await handler(event, value) } catch (error) {
         const session = sessions.get(event.sender)
         sessions.delete(event.sender)
         const message = String(error?.message || '')
         const safe = message.length <= 300 && !/https?:|\/workspace|node_modules|Bearer |stack|exception/i.test(message)
         return { ok: false, error: safe && message ? message : 'No fue posible completar la solicitud. No se reintentó la impresión.', ...(session ? summary(session) : {}) }
-      } finally { busy.delete(event.sender) }
+      } finally { if (!diagnostic) busy.delete(event.sender) }
     })
   }
+  handle('prisma:poll', async (_event, value) => {
+    if (typeof stationId !== 'string' || !/^[0-9a-f-]{36}$/.test(stationId)) throw Error('Identidad de la estación no disponible.')
+    const result = await request('station/poll', value?.token, { station_id: stationId })
+    if (result.connected !== true || !Array.isArray(result.signals) || result.signals.length > 20
+      || result.signals.some(s => !Number.isSafeInteger(s.receipt_id) || !['labels', 'letterhead', 'channel'].includes(s.kind))) throw Error('Señales no reconocidas.')
+    return { ok: true, connected: true, signals: result.signals }
+  })
+  handle('prisma:acknowledge', async (_event, value) => {
+    if (!value || !Array.isArray(value.receipt_ids) || value.receipt_ids.length < 1 || value.receipt_ids.length > 20
+      || value.receipt_ids.some(id => !Number.isSafeInteger(id) || id < 1)) throw Error('Acuse de señal inválido.')
+    const result = await request('station/acknowledge', value.token, { station_id: stationId, receipt_ids: value.receipt_ids })
+    if (!Number.isSafeInteger(result.acknowledged) || result.acknowledged < 0) throw Error('Acuse no reconocido.')
+    return { ok: true, acknowledged: result.acknowledged }
+  })
   handle('prisma:status', async (event, value) => {
     const agent = await request('status', value?.token, null, 'GET')
     if (typeof agent.enabled !== 'boolean' || typeof agent.available !== 'boolean' || agent.slug !== 'prisma') throw Error('Estado de Prisma no reconocido.')

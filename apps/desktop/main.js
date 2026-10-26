@@ -1,5 +1,7 @@
 const { app, BrowserWindow, ipcMain } = require('electron')
 const path = require('path')
+const fs = require('node:fs')
+const { randomUUID } = require('node:crypto')
 const { register: registerBetaPrinters } = require('./beta-printers')
 const dispatchPrint = require('./dispatch-print')
 const prismaAgent = require('./prisma-agent')
@@ -7,6 +9,17 @@ dispatchPrint.registerScheme(require('electron').protocol)
 let attachDispatchPrinting
 let attachBetaPrinters
 let attachPrisma
+
+function prismaStationId() {
+  const file = path.join(app.getPath('userData'), 'prisma-station.id')
+  try {
+    const saved = fs.readFileSync(file, 'utf8').trim()
+    if (/^[0-9a-f-]{36}$/.test(saved)) return saved
+  } catch { /* New installation. */ }
+  const id = randomUUID()
+  fs.writeFileSync(file, id, { mode: 0o600 })
+  return id
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -104,6 +117,6 @@ ipcMain.handle('print-labels', printLabels)
 app.whenReady().then(() => {
   attachBetaPrinters = registerBetaPrinters({ app, BrowserWindow, ipcMain, ...require('electron') })
   attachDispatchPrinting = dispatchPrint.register({ ...require('electron'), profiles: attachBetaPrinters })
-  attachPrisma = prismaAgent.register({ ipcMain, profiles: attachBetaPrinters, printLabels, printLetterhead: attachDispatchPrinting.run })
+  attachPrisma = prismaAgent.register({ ipcMain, profiles: attachBetaPrinters, printLabels, printLetterhead: attachDispatchPrinting.run, stationId: prismaStationId() })
   createWindow()
 })

@@ -20,6 +20,7 @@ import ProductionHeader from './ProductionHeader'
 import ProductionActions from './ProductionActions'
 import LetterheadSearch from './LetterheadSearch'
 import PrismaAssistant from '@/modules/prisma/PrismaAssistant'
+import PrismaIndicators from '@/modules/prisma/PrismaIndicators'
 import RequisitionAutocomplete from './RequisitionAutocomplete'
 import useRequisitionCache from '@/hooks/useRequisitionCache'
 import SearchMethodTabs, {

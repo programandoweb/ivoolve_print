@@ -5,7 +5,7 @@ import { FiMessageSquare, FiPrinter, FiSend, FiX } from 'react-icons/fi'
 import { prismaService, type PrismaResult } from './prisma.service'
 
 type Message = { role: 'user' | 'assistant'; text: string }
-const greeting: Message = { role: 'assistant', text: 'Soy Prisma. Puedo imprimir etiquetas por código de barras y cantidad, o membretes por número de despacho de hoy. Ejemplo: «Imprime 3 etiquetas del código 123» o «Imprime el membrete 02».' }
+const greeting: Message = { role: 'assistant', text: 'Soy Prisma. Estamos comprobando la conexión con Ivoolve Print. Escribe «Prueba etiqueta», «Prueba membrete» o «Prueba canal». Durante esta fase NO imprimiré documentos.' }
 
 export default function PrismaAssistant({ token }: { token?: string }) {
   const [open, setOpen] = useState(false)
@@ -65,7 +65,7 @@ export default function PrismaAssistant({ token }: { token?: string }) {
     finally { locked.current = false; setBusy(false) }
   }
   async function submit() {
-    if (locked.current || !text.trim() || plan || selection || agent?.available === false) return
+    if (locked.current || !text.trim() || plan || selection || agent?.enabled === false) return
     const message = text.trim()
     setText(''); setMessages(previous => [...previous, { role: 'user' as const, text: message }].slice(-60))
     await perform(async () => {
@@ -120,7 +120,7 @@ export default function PrismaAssistant({ token }: { token?: string }) {
           <button type="button" onClick={close} aria-label="Cerrar Prisma" className="rounded-lg p-3 text-slate-600 hover:bg-slate-100"><FiX /></button>
         </header>
         <div aria-live="polite" className="border-b border-slate-200 px-5 py-2 text-xs text-slate-600">
-          {agentError || (agent ? (agent.available ? `Disponible · ${agent.provider} / ${agent.model}` : agent.reason || 'Prisma desactivado o sin configurar.') : 'Consultando estado de Prisma…')}
+          {agentError || (agent ? (agent.enabled ? 'Prisma habilitado · Modo conectividad sin impresiones' : 'Prisma desactivado.') : 'Consultando estado de Prisma…')}
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-5">
           <div role="log" aria-live="polite" aria-busy={busy} className="space-y-4">
@@ -139,8 +139,8 @@ export default function PrismaAssistant({ token }: { token?: string }) {
           <div ref={end} />
         </div>
         <form onSubmit={event => { event.preventDefault(); void submit() }} className="border-t border-slate-200 p-4">
-          <p className="mb-3 text-xs text-slate-500">La impresión silenciosa y las medidas se toman del perfil. Las solicitudes de texto se procesan con IA; no incluyas contraseñas.</p>
-          <div className="flex gap-2"><input ref={input} aria-label="Mensaje para Prisma" value={text} onChange={event => setText(event.target.value)} disabled={busy || !!plan || !!selection || agent?.available === false} maxLength={1000} placeholder="Imprime el membrete 02" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 outline-none focus:border-pink-500 disabled:bg-slate-100" /><button type="submit" aria-label="Enviar a Prisma" disabled={busy || !text.trim() || !!plan || !!selection || agent?.available === false} className="rounded-xl bg-pink-600 px-4 text-white hover:bg-pink-700 disabled:opacity-40"><FiSend /></button></div>
+          <p className="mb-3 text-xs text-slate-500">Modo diagnóstico: ninguna prueba genera un PDF o envía trabajos al spooler.</p>
+          <div className="flex gap-2"><input ref={input} aria-label="Mensaje para Prisma" value={text} onChange={event => setText(event.target.value)} disabled={busy || !!plan || !!selection || agent?.available === false} maxLength={1000} placeholder="Prueba etiqueta" className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-3 text-sm text-slate-900 outline-none focus:border-pink-500 disabled:bg-slate-100" /><button type="submit" aria-label="Enviar a Prisma" disabled={busy || !text.trim() || !!plan || !!selection || agent?.available === false} className="rounded-xl bg-pink-600 px-4 text-white hover:bg-pink-700 disabled:opacity-40"><FiSend /></button></div>
         </form>
       </section>
     </div>}
