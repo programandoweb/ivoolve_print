@@ -151,6 +151,19 @@ function renderProfiles() {
       try { state = await call('setProfileSettings', { id: profile.id, enabled: active.checked, silentEnabled: active.checked && silent.checked }) } finally { renderProfiles() }
     })
     active.onchange = updateFlags; silent.onchange = updateFlags
+    const prisma = el('input'); prisma.type = 'checkbox'; prisma.checked = profile.prismaEnabled === true;
+    prisma.disabled = !profile.enabled || !profile.identity
+    const prismaLabel = el('label', null, 'profile-check')
+    prismaLabel.append(prisma, el('span', 'Autorizar Prisma (diálogo Windows, nunca silenciosa)'))
+    prismaLabel.title = 'Apagado por defecto. Una orden válida de WhatsApp o PWA abrirá automáticamente el diálogo de Windows, sin botones previos.'
+    prisma.onchange = () => run(async () => {
+      try {
+        state = await call('setPrismaEnabled', { id: profile.id, enabled: prisma.checked })
+        $('message').textContent = prisma.checked
+          ? 'Prisma habilitado para este perfil. Cada impresión requiere confirmación en Windows.'
+          : 'Impresiones de Prisma desactivadas para este perfil.'
+      } finally { renderProfiles() }
+    })
     const routing = el('input'); routing.type = 'radio'; routing.name = 'labels-destination'; routing.checked = state.labelsProfileId === profile.id; routing.disabled = !profile.enabled
     routing.onchange = () => run(async () => { try { state = await call('setLabelsProfile', profile.id) } finally { renderProfiles() } })
     const routeLabel = el('label', null, 'profile-check profile-route'); routeLabel.append(routing, el('span', 'Recibir trabajos de etiquetas'))
@@ -158,7 +171,7 @@ function renderProfiles() {
     const letterhead = el('input'); letterhead.type = 'radio'; letterhead.name = 'letterhead-destination'; letterhead.checked = state.letterheadProfileId === profile.id; letterhead.disabled = !profile.enabled
     letterhead.onchange = () => run(async () => { try { state = await call('setLetterheadProfile', profile.id) } finally { renderProfiles() } })
     const letterheadLabel = el('label', null, 'profile-check'); letterheadLabel.append(letterhead, el('span', 'Recibir membretes de despachos'))
-    controls.append(activeLabel, silentLabel, routeLabel, letterheadLabel, el('p', modeText, 'binding-note'))
+    controls.append(activeLabel, silentLabel, prismaLabel, routeLabel, letterheadLabel, el('p', modeText, 'binding-note'))
     body.append(controls, paperSettings(profile))
     const save = button('Guardar', 'check', 'btn btn-primary')
     save.onclick = () => run(async () => { state = await call('saveProfile', { id: profile.id, label: label.value, identity: select.value === '' ? null : printers[Number(select.value)].identity }); renderProfiles(); $('message').textContent = 'Perfil guardado correctamente.' })
