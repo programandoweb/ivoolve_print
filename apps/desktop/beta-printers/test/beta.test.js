@@ -4,7 +4,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
 const { execFileSync } = require('node:child_process')
-const { Store, resolve, validIdentity } = require('../core')
+const { Store, resolve, resolvePrisma, validIdentity } = require('../core')
 const { inventory } = require('../inventory')
 const { register } = require('../index')
 const identity = { name: 'Label', driver: 'Twin', port: 'USB003', pnp: 'instance1', serial: '' }
@@ -20,6 +20,14 @@ test('identity: stable serial, collision, instance, changed queue, no match', ()
   assert.equal(resolve(serial, [printer(serial), printer(serial)]).state, 'ambiguous')
   assert.equal(validIdentity({ ...identity, command: 'anything' }), false)
   assert.equal(validIdentity({ ...identity, name: '\n' }), false)
+})
+test('Prisma strict queue matching distinguishes identical drivers without guessing', () => {
+  const other = { ...identity, name: 'Other Label', port: 'USB004', pnp: 'instance2' }
+  assert.equal(resolvePrisma(identity, [printer(identity), printer(other)]).state, 'probable')
+  assert.equal(resolvePrisma(identity, [printer(other)]).state, 'not-found')
+  assert.equal(resolvePrisma(identity, [printer(identity), printer(identity)]).state, 'ambiguous')
+  assert.equal(resolvePrisma(identity, []).state, 'not-found')
+  assert.equal(resolvePrisma({ ...identity, port: 'USB999' }, [printer(identity)]).state, 'not-found')
 })
 test('store: off default, restart, unlink, corruption, invalid schema and failed write', t => {
   const dir = temp(t); const store = new Store(dir); const state = store.read()
