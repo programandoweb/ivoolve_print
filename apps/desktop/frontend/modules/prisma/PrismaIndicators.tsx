@@ -3,6 +3,15 @@
 import {useEffect, useState} from 'react'
 import {prismaService, type PrismaSignal} from './prisma.service'
 
+export type PrismaLookupFeedback = {
+  status: 'found' | 'not_found' | 'choose' | 'error'
+  query: string
+  code?: string
+  title?: string
+  variant?: string
+  source?: string
+}
+
 const LABELS = [
   {kind: 'connection', name: 'Conexión'},
   {kind: 'labels', name: 'Etiqueta'},
@@ -10,10 +19,11 @@ const LABELS = [
   {kind: 'channel', name: 'Canal'},
 ] as const
 
-export default function PrismaIndicators({token}: {token?: string}) {
+export default function PrismaIndicators({token, manualResult}: {token?: string; manualResult?: PrismaLookupFeedback | null}) {
   const [connected, setConnected] = useState(false)
   const [flashes, setFlashes] = useState<Partial<Record<PrismaSignal['kind'], {at: number; source: string}>>>({})
   const [now, setNow] = useState(Date.now())
+  const [lookupResult, setLookupResult] = useState<PrismaLookupFeedback | null>(null)
   const [simulation, setSimulation] = useState<{kind: string; number: string; source: string; at: number} | null>(null)
   const [message, setMessage] = useState('Electron sin conectar')
 
@@ -23,6 +33,7 @@ export default function PrismaIndicators({token}: {token?: string}) {
     setConnected(false)
     setFlashes({})
     setSimulation(null)
+    setLookupResult(null)
     if (!token || !window.ivoolvePrisma?.poll) {
       setMessage(!token ? 'Inicia sesión para conectar la estación' : 'Abre la aplicación Electron actualizada')
       return
@@ -43,14 +54,28 @@ export default function PrismaIndicators({token}: {token?: string}) {
           if (!active) return
           if (!ack.ok || ack.acknowledged !== receiptIds.length) throw Error('Señal recibida, pero sin acuse completo')
           const at = Date.now()
-          const simulations = result.signals.filter(s => s.document_number && ['labels', 'letterhead'].includes(s.kind))
+          const reports = result.signals.filter(s => s.lookup_status)
+          if (reports.length) {
+            const last = reports[reports.length - 1]
+            setLookupResult({
+              status: last.lookup_status!,
+              query: last.document_query || (last.document_number ? 'Etiqueta ' + last.document_number : 'Etiqueta'),
+              code: last.document_number || undefined,
+              title: last.document_title || undefined,
+              variant: last.document_variant || undefined,
+              source: last.source,
+            })
+          }
+          const simulations = result.signals.filter(s => s.document_number && !s.lookup_status && ['labels', 'letterhead'].includes(s.kind))
           if (simulations.length) {
             const last = simulations[simulations.length - 1]
             setSimulation({kind: last.kind, number: last.document_number!, source: last.source, at})
           }
           setFlashes(prev => {
             const next = {...prev}
-            for (const signal of result.signals!) next[signal.kind] = {at, source: signal.source}
+            for (const signal of result.signals!) {
+              if (signal.kind !== 'lookup') next[signal.kind] = {at, source: signal.source}
+            }
             return next
           })
         }
@@ -62,6 +87,20 @@ export default function PrismaIndicators({token}: {token?: string}) {
     const interval = setInterval(() => {setNow(Date.now()); void tick()}, 3500)
     return () => {active = false; clearInterval(interval)}
   }, [token])
+
+  const notice = manualResult || lookupResult
+  const noticeColor = notice?.status === 'found'
+    ? 'border-green-200 bg-green-50 text-green-900'
+    : notice?.status === 'not_found' || notice?.status === 'error'
+      ? 'border-red-200 bg-red-50 text-red-800'
+      : 'border-amber-200 bg-amber-50 text-amber-900'
+  const noticeMessage = notice?.status === 'found'
+    ? `${notice.title || notice.query} conseguido. ${notice.variant ? 'Variante: ' + notice.variant + '. ' : ''}Código: ${notice.code || 'no identificado'}.`
+    : notice?.status === 'not_found'
+      ? `${notice.query} no fue conseguido. ${notice.code ? 'Código solicitado: ' + notice.code : 'Código no identificado'}.`
+      : notice?.status === 'choose'
+        ? `Hay varias coincidencias para ${notice.query}. Especifica la variante o el código.`
+        : `No fue posible consultar ${notice?.query || 'la etiqueta'}.`
 
   return <section aria-label="Diagnóstico Prisma" className="mx-auto mb-5 w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -83,6 +122,11 @@ export default function PrismaIndicators({token}: {token?: string}) {
         </div>
       })}
     </div>
+    {notice && <div role="status" aria-live="polite" className={`mt-3 rounded-xl border px-4 py-3 text-sm ${noticeColor}`}>
+      <strong>{notice.status === 'found' ? 'Etiqueta encontrada' : notice.status === 'not_found' ? 'Etiqueta no encontrada' : notice.status === 'choose' ? 'Selección necesaria' : 'Error de consulta'}:</strong>{' '}
+      {noticeMessage}
+      <span className="ml-2 text-xs">Origen: {notice.source || 'manual'}. No se envió ninguna impresión física.</span>
+    </div>}
     {simulation && <div role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
       <strong>{'Simulación de conectividad confirmada'}:</strong>{' '}
       {simulation.kind === 'letterhead' ? 'Membrete' : 'Etiqueta'} {simulation.number}
