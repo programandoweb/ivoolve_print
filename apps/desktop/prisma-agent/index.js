@@ -24,6 +24,7 @@ function commands(value) {
 function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, fetchImpl = fetch, now = () => new Date() }) {
   const shells = new WeakSet(); const busy = new WeakSet(); const sessions = new WeakMap()
   const supervised = new WeakMap()
+  let lastSupervisedProbeLog = 0
   function authorize(event) {
     let origin
     try { origin = new URL(event.senderFrame.url).origin } catch {}
@@ -83,6 +84,10 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
       if (sessions.has(event.sender) && ['prisma:interpret', 'prisma:execute'].includes(channel)) return { ok: false, error: 'Selecciona o cancela el membrete pendiente antes de otra solicitud.' }
       if (!diagnostic) busy.add(event.sender)
       try { return await handler(event, value) } catch (error) {
+        if (channel === 'prisma:supervised-next') {
+          // Main-process diagnostics only; never log tokens, jobs or HTTP headers.
+          console.warn('[Prisma supervised] Claim request failed:', String(error?.message || 'unknown error').slice(0, 180))
+        }
         const session = sessions.get(event.sender)
         sessions.delete(event.sender)
         const message = String(error?.message || '')
@@ -108,9 +113,19 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
   // One-shot supervised jobs: fetched and claimed with the station JWT.
   // The document payload NEVER comes from a renderer argument or from WhatsApp.
   handle('prisma:supervised-next', async (event, value) => {
-    if (supervised.has(event.sender)) return { ok: true, job: null }
+    if (supervised.has(event.sender)) {
+      console.info('[Prisma supervised] Existing claimed job awaiting execution')
+      return { ok: true, job: null }
+    }
+    // Low-frequency diagnostic proves whether the renderer calls the supervised endpoint.
+    const timestamp = Date.now()
+    if (timestamp - lastSupervisedProbeLog > 30000) {
+      console.info('[Prisma supervised] Checking Laravel for pending jobs')
+      lastSupervisedProbeLog = timestamp
+    }
     const received = await request('station/print/next', value?.token, { station_id: stationId })
     const job = received.job
+    if (job != null) console.info('[Prisma supervised] Job claimed; opening supervised flow, job_id:', job.id)
     if (job == null) return { ok: true, job: null }
     if (!Number.isSafeInteger(job.id) || job.id < 1
         || !['labels', 'letterhead'].includes(job.kind)
