@@ -24,6 +24,7 @@ test('identity: stable serial, collision, instance, changed queue, no match', ()
 test('store: off default, restart, unlink, corruption, invalid schema and failed write', t => {
   const dir = temp(t); const store = new Store(dir); const state = store.read()
   assert.equal(state.enabled, false); assert.equal(state.profiles.length, 3)
+  assert.ok(state.profiles.every(p => p.prismaEnabled === false), 'Prisma must never be enabled by default')
   store.write({ ...state, enabled: true, profiles: state.profiles.map((p, i) => i ? p : { ...p, identity }) })
   assert.deepEqual(new Store(dir).read(), store.state)
   assert.throws(() => store.write({ ...state, version: 2 }))
@@ -67,6 +68,10 @@ test('IPC: exact local frame only; off means no inventory; profiles validation; 
   const p = saved.data.profiles.find(p => p.label === 'Nueva')
   assert.equal((await h.invoke('saveProfile', { ...p, identity: null })).ok, true)
   assert.equal((await h.invoke('removeProfile', p.id)).ok, true)
+  const first = (await h.invoke('getStatus')).data.profiles.find(p => p.label === 'Etiquetas')
+  assert.equal(first.prismaEnabled, false)
+  assert.equal((await h.invoke('setPrismaEnabled', {id: first.id, enabled: true})).ok, false,
+    'Cannot authorize Prisma on an unbound profile')
   assert.equal((await h.invoke('testPrint', { confirmed: false, identity })).ok, false)
   assert.equal((await h.invoke('testPrint', { confirmed: true, identity: { ...identity, driver: '', port: '', pnp: '' } })).ok, false)
 })
