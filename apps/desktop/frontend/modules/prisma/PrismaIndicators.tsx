@@ -91,6 +91,7 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
   }, [token])
 
   const notice = manualResult && (!lookupResult?.at || (manualResult.at || 0) >= lookupResult.at) ? manualResult : lookupResult
+  const noticeIsMembrete = (notice?.query || '').toLowerCase().startsWith('membrete ')
   const noticeColor = notice?.status === 'found'
     ? 'border-green-200 bg-green-50 text-green-900'
     : notice?.status === 'not_found' || notice?.status === 'error'
@@ -125,7 +126,7 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
       })}
     </div>
     {notice && <div role="status" aria-live="polite" className={`mt-3 rounded-xl border px-4 py-3 text-sm ${noticeColor}`}>
-      <strong>{notice.status === 'found' ? 'Etiqueta encontrada' : notice.status === 'not_found' ? 'Etiqueta no encontrada' : notice.status === 'choose' ? 'Selección necesaria' : 'Error de consulta'}:</strong>{' '}
+      <strong>{notice.status === 'found' ? (noticeIsMembrete ? 'Membrete encontrado' : 'Etiqueta encontrada') : notice.status === 'not_found' ? (noticeIsMembrete ? 'Membrete no encontrado' : 'Etiqueta no encontrada') : notice.status === 'choose' ? 'Selección necesaria' : 'Error de consulta'}:</strong>{' '}
       {noticeMessage}
       <span className="ml-2 text-xs">Origen: {notice.source || 'manual'}. No se envió ninguna impresión física.</span>
     </div>}
