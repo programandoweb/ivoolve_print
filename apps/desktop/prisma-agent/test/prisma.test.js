@@ -159,6 +159,38 @@ test('malformed document simulation is rejected without accessing a printer or a
   assert.equal(h.requests.length, 1)
 })
 
+test('verified named label and negative lookup notice keep Electron connected without printing', async () => {
+  const h = setup({signals: [
+    {receipt_id: 43, signal_id: 25, kind: 'labels', source: 'whatsapp',
+      document_number: '381', lookup_status: 'found', document_title: 'Body Barbie',
+      document_variant: 'Rojo', document_query: 'body barbie rojo',
+      created_at: '2026-10-26 10:39:00'},
+    {receipt_id: 44, signal_id: 26, kind: 'lookup', source: 'whatsapp',
+      document_number: null, lookup_status: 'not_found', document_title: null,
+      document_variant: null, document_query: 'Body Barbie Morado',
+      created_at: '2026-10-26 10:40:00'},
+    {receipt_id: 45, signal_id: 27, kind: 'lookup', source: 'chat',
+      document_number: '3811', lookup_status: 'not_found', document_title: null,
+      document_variant: null, document_query: 'Etiqueta 3811',
+      created_at: '2026-10-26 10:40:00'},
+  ]})
+  const result = await h.invoke('poll')
+  assert.equal(result.ok, true, result.error)
+  assert.equal(result.connected, true)
+  assert.deepEqual(result.signals.map(s => s.lookup_status), ['found', 'not_found', 'not_found'])
+  assert.equal((await h.invoke('acknowledge', {receipt_ids: [43,44,45]})).acknowledged, 3)
+  assert.equal(h.calls.length, 0)
+  assert.equal(h.profiles.length, 0)
+})
+test('invalid lookup status is rejected without acknowledging', async () => {
+  const h = setup({signals: [{receipt_id: 60, signal_id: 32, kind: 'lookup',
+    lookup_status: 'printed', document_query: 'Body Barbie', source: 'whatsapp',
+    created_at: '2026-10-26 10:40:00'}]})
+  assert.equal((await h.invoke('poll')).ok, false)
+  assert.equal(h.calls.length, 0)
+  assert.equal(h.requests.length, 1)
+})
+
 test('invalid diagnostic receipt list is blocked before any API call', async () => {
   const h = setup()
   for (const ids of [[0], [-1], ['1'], [], Array(21).fill(2)]) {
