@@ -20,7 +20,7 @@ import ProductionHeader from './ProductionHeader'
 import ProductionActions from './ProductionActions'
 import LetterheadSearch from './LetterheadSearch'
 import PrismaAssistant from '@/modules/prisma/PrismaAssistant'
-import PrismaIndicators from '@/modules/prisma/PrismaIndicators'
+import PrismaIndicators, { type PrismaLookupFeedback } from '@/modules/prisma/PrismaIndicators'
 import RequisitionAutocomplete from './RequisitionAutocomplete'
 import useRequisitionCache from '@/hooks/useRequisitionCache'
 import SearchMethodTabs, {
@@ -58,6 +58,8 @@ export default function Page() {
   const [loading, setLoading] = useState(false)
   const [printing, setPrinting] = useState(false)
   const [tag, setTag] = useState<any>(null)
+  const [tagLookupFeedback, setTagLookupFeedback] = useState<PrismaLookupFeedback | null>(null)
+  const [tagCandidates, setTagCandidates] = useState<Array<{code: string; barcode: string; product: string; variant: string}>>([])
   const [data, setData] = useState<any>(null)
   const [print, setPrint] = useState<any[]>([])
   const [printQuantity, setPrintQuantity] = useState('')
@@ -89,6 +91,37 @@ export default function Page() {
     setLoading(true)
 
     try {
+      if (searchMethod === 'tag') {
+        setTag(null)
+        setTagCandidates([])
+        if (!/^[0-9]{1,12}$/.test(searchValue.trim())) {
+          const response = await fetch(formData.backend.replace(/\/$/, '') + '/printing-agent/labels/lookup', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Accept: 'application/json',
+              Authorization: 'Bearer ' + (user?.token || ''),
+            },
+            body: JSON.stringify({query: searchValue.trim()}),
+          })
+          const json = await response.json()
+          const result = json?.data
+          if (!response.ok || !result || !['found', 'not_found', 'choose'].includes(result.status)) {
+            setTagLookupFeedback({status:'error', query:searchValue.trim(), source:'manual', at:Date.now()})
+            return null
+          }
+          if (result.status !== 'found') {
+            setTagCandidates(result.candidates || [])
+            setTagLookupFeedback({status:result.status, query:searchValue.trim(), source:'manual', at:Date.now()})
+            return null
+          }
+          // The real barcode is still loaded with the existing manual tag endpoint.
+          setTagLookupFeedback({status:'found', query:searchValue.trim(), code:result.code,
+            title:result.product, variant:result.variant, source:'manual', at:Date.now()})
+          return await fetchProductionOrder(result.code, options)
+        }
+      }
+
       const endpoint = formData.backend + location.pathname
 
       const response = await formData.handleRequest(
@@ -108,6 +141,19 @@ export default function Page() {
         setPrint(response.print)
       }
 
+      if (searchMethod === 'tag') {
+        const found = Array.isArray(response?.tag) ? response.tag[0] : response?.tag
+        if (found?.id) {
+          setTagLookupFeedback({
+            status:'found', query:searchValue.trim(), code:String(found.id),
+            title:String(found.product?.name || ''), variant:String(found.variant_name || ''),
+            source:'manual', at:Date.now(),
+          })
+        } else {
+          setTagLookupFeedback({status:'not_found', query:'Etiqueta ' + searchValue.trim(),
+            code:searchValue.trim(), source:'manual', at:Date.now()})
+        }
+      }
       if (response?.tag) {
         setTag(response.tag)
       }
