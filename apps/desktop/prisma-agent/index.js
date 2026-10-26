@@ -23,6 +23,7 @@ function commands(value) {
 }
 function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, fetchImpl = fetch, now = () => new Date() }) {
   const shells = new WeakSet(); const busy = new WeakSet(); const sessions = new WeakMap()
+  const supervised = new WeakMap()
   function authorize(event) {
     let origin
     try { origin = new URL(event.senderFrame.url).origin } catch {}
@@ -104,6 +105,74 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
     if (!Number.isSafeInteger(result.acknowledged) || result.acknowledged < 0) throw Error('Acuse no reconocido.')
     return { ok: true, acknowledged: result.acknowledged }
   })
+  // One-shot supervised jobs: fetched and claimed with the station JWT.
+  // The document payload NEVER comes from a renderer argument or from WhatsApp.
+  handle('prisma:supervised-next', async (event, value) => {
+    if (supervised.has(event.sender)) return { ok: true, job: null }
+    const received = await request('station/print/next', value?.token, { station_id: stationId })
+    const job = received.job
+    if (job == null) return { ok: true, job: null }
+    if (!Number.isSafeInteger(job.id) || job.id < 1
+        || !['labels', 'letterhead'].includes(job.kind)
+        || typeof job.number !== 'string' || !/^[0-9]{1,12}$/.test(job.number)
+        || !Number.isSafeInteger(job.quantity) || job.quantity < 1
+        || job.quantity > (job.kind === 'labels' ? 100 : 1)
+        || typeof job.title !== 'string' || job.title.length > 120
+        || typeof job.variant !== 'string' || job.variant.length > 100
+        || (job.dispatch_id != null && (!Number.isSafeInteger(job.dispatch_id) || job.dispatch_id < 1))
+        || (job.kind === 'labels' && !job.payload)
+        || (job.kind === 'letterhead' && job.payload != null)) throw Error('Trabajo supervisado no válido; no se imprimió.')
+    commands([{ kind: job.kind, number: job.number, quantity: job.quantity,
+      ...(job.kind === 'labels' ? { payload: job.payload } : {}) }])
+    supervised.set(event.sender, { job, token: value.token })
+    return { ok: true, job: { id: job.id, kind: job.kind, number: job.number, quantity: job.quantity,
+      title: job.title, variant: job.variant, source: job.source } }
+  })
+  handle('prisma:supervised-execute', async (event, value) => {
+    const selected = supervised.get(event.sender)
+    if (!selected || selected.job.id !== value?.job_id || selected.token !== value?.token) {
+      throw Error('La solicitud de impresión supervisada no está disponible.')
+    }
+    // Consume local authorization before calling a printer, so no duplicate
+    // click, navigation or network retry can execute it twice.
+    supervised.delete(event.sender)
+    const job = selected.job
+    let outcome = 'failed'
+    let message = 'No se completó el envío a la cola Windows.'
+    try {
+      await profiles.getPrismaPrintPlan(event, job.kind)
+      const result = job.kind === 'labels'
+        ? await printLabels(event, job.payload, { prismaSupervised: true })
+        : await printLetterhead(event, {
+          token: selected.token, number: job.number,
+          ...(job.dispatch_id != null ? { dispatchId: job.dispatch_id } : {}),
+        }, { prismaSupervised: true })
+      if (result?.ok && result.status !== 'choose') {
+        outcome = 'submitted'
+        message = 'El operador confirmó el diálogo. Enviado a la cola Windows; no se confirma la salida física.'
+      } else {
+        outcome = 'cancelled_or_failed'
+        message = result?.status === 'choose'
+          ? 'Hay varios despachos con este número. No se imprimió: especifica el despacho.'
+          : 'El diálogo se canceló o falló. No se reintentó la impresión.'
+      }
+    } catch (error) {
+      outcome = String(error?.message || '').includes('perfil') || String(error?.message || '').includes('Prisma no está autorizado')
+        ? 'profile_blocked' : 'failed'
+      message = outcome === 'profile_blocked'
+        ? 'El perfil local no autoriza esta impresión de Prisma. No se imprimió nada.'
+        : 'No fue posible preparar el documento o abrir el diálogo. No se reintentó.'
+    }
+    // Completion is best effort; failures must NEVER replay a claimed job.
+    let recorded = false
+    try {
+      const receipt = await request('station/print/complete', selected.token, {
+        station_id: stationId, job_id: job.id, outcome,
+      })
+      recorded = receipt.recorded === true
+    } catch { /* no print retry */ }
+    return { ok: true, status: outcome, message, recorded, job_id: job.id }
+  })
   handle('prisma:status', async (event, value) => {
     const agent = await request('status', value?.token, null, 'GET')
     if (typeof agent.enabled !== 'boolean' || typeof agent.available !== 'boolean' || agent.slug !== 'prisma') throw Error('Estado de Prisma no reconocido.')
@@ -145,8 +214,8 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
   })
   return shell => {
     shells.add(shell.webContents)
-    shell.webContents.on('did-start-navigation', (_event, _url, _inPlace, mainFrame) => { if (mainFrame) sessions.delete(shell.webContents) })
-    shell.webContents.once('destroyed', () => sessions.delete(shell.webContents))
+    shell.webContents.on('did-start-navigation', (_event, _url, _inPlace, mainFrame) => { if (mainFrame) { sessions.delete(shell.webContents); supervised.delete(shell.webContents) } })
+    shell.webContents.once('destroyed', () => { sessions.delete(shell.webContents); supervised.delete(shell.webContents) })
   }
 }
 module.exports = { register, commands }
