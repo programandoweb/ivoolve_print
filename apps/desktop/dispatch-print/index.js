@@ -68,7 +68,7 @@ function register({ BrowserWindow, ipcMain, protocol, net, profiles, fetchImpl =
       const selected = value.dispatchId === undefined ? matches[0] : matches.find(p => p.id === value.dispatchId)
       if (!selected) throw Error('El despacho elegido no coincide con la búsqueda de hoy.')
       const pdf = await service.download(selected, value, date)
-      const plan = await profiles.getPrintPlan(event, 'letterhead')
+      const plan = await printPlan()
       if (today(now()) !== date) throw Error('Cambió el día de despacho. Vuelve a buscar.')
       printWindow = new BrowserWindow({ show: false, webPreferences: { preload: path.join(__dirname, 'pdf-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } })
       printWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
@@ -81,7 +81,7 @@ function register({ BrowserWindow, ipcMain, protocol, net, profiles, fetchImpl =
       const preparation = Promise.all([printWindow.loadURL(DOCUMENT), ready])
       const [, rendering] = await preparation
       clearTimeout(timeout)
-      const current = await profiles.getPrintPlan(event, 'letterhead')
+      const current = await printPlan()
       if (JSON.stringify(current) !== JSON.stringify(plan)) throw Error('Cambió la configuración de Membretes. Vuelve a enviar el trabajo.')
       if (today(now()) !== date) throw Error('Cambió el día de despacho. Vuelve a buscar.')
       const { margins, ...options } = plan.options
