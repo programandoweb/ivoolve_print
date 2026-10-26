@@ -143,7 +143,9 @@ export default function Page() {
 
       if (searchMethod === 'tag') {
         const found = Array.isArray(response?.tag) ? response.tag[0] : response?.tag
-        if (found?.id) {
+        if (!response) {
+          setTagLookupFeedback({status:'error', query:searchValue.trim(), source:'manual', at:Date.now()})
+        } else if (found?.id) {
           setTagLookupFeedback({
             status:'found', query:searchValue.trim(), code:String(found.id),
             title:String(found.product?.name || ''), variant:String(found.variant_name || ''),
