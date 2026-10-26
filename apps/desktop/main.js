@@ -17,7 +17,13 @@ function prismaStationId() {
     if (/^[0-9a-f-]{36}$/.test(saved)) return saved
   } catch { /* New installation. */ }
   const id = randomUUID()
-  fs.writeFileSync(file, id, { mode: 0o600 })
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.writeFileSync(file, id, { mode: 0o600 })
+  } catch {
+    // Fail open for the existing manual printing app; diagnostics still use an
+    // in-memory station ID for this run instead of crashing Electron.
+  }
   return id
 }
 
