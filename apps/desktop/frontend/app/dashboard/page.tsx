@@ -374,6 +374,9 @@ export default function Page() {
   const handleReset = () => {
     setData(null)
     setPrint([])
+    setTagCandidates([])
+    setTagLookupFeedback(null)
+    setTag(null)
     setSearch('')
     setPrintQuantity('')
     setDrawerPrintQuantity('')
@@ -399,6 +402,8 @@ export default function Page() {
     option: SearchMethodOption
   ) => {
     setSearchMethod(value)
+    setTagCandidates([])
+    setTagLookupFeedback(null)
     setSearchMethodConfig(option)
     setDrawerOpen({
       open: Boolean(option.drawer),
@@ -607,7 +612,7 @@ export default function Page() {
         Lista de órdenes
       </h1>
 
-      <PrismaIndicators token={user?.token} />
+      <PrismaIndicators token={user?.token} manualResult={tagLookupFeedback} />
       <PrismaAssistant token={user?.token} />
 
       {!data && (
@@ -630,13 +635,27 @@ export default function Page() {
                   type="text"
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Escribe y presiona Enter para buscar"
+                  placeholder={searchMethod === 'tag' ? 'Código 381 o Body Barbie Rojo' : 'Escribe y presiona Enter para buscar'}
                   className="w-full bg-transparent px-3 py-4 text-sm text-slate-900 outline-none placeholder:text-slate-400"
                 />
               </div>
             )
           )}
 
+          {searchMethod === 'tag' && tagCandidates.length > 0 && (
+            <div className="mt-3 divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+              <p className="px-4 py-2 text-xs font-semibold text-slate-600">Varias etiquetas encontradas. Selecciona la correcta:</p>
+              {tagCandidates.map((candidate) => (
+                <button key={candidate.code} type="button"
+                  onClick={() => { setSearch(candidate.code); setTagCandidates([]); void fetchProductionOrder(candidate.code) }}
+                  className="grid w-full grid-cols-[1fr_1fr_auto] gap-2 px-4 py-3 text-left text-sm hover:bg-pink-50">
+                  <span className="truncate font-semibold text-slate-800">{candidate.product}</span>
+                  <span className="truncate text-slate-600">{candidate.variant || 'Sin variante'}</span>
+                  <span className="font-mono text-pink-600">{candidate.code}</span>
+                </button>
+              ))}
+            </div>
+          )}
           <SearchMethodTabs
             value={searchMethod}
             onChange={handleSearchMethodChange}
