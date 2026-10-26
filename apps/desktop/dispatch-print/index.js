@@ -85,7 +85,7 @@ function register({ BrowserWindow, ipcMain, protocol, net, profiles, fetchImpl =
       if (JSON.stringify(current) !== JSON.stringify(plan)) throw Error('Cambió la configuración de Membretes. Vuelve a enviar el trabajo.')
       if (today(now()) !== date) throw Error('Cambió el día de despacho. Vuelve a buscar.')
       const { margins, ...options } = plan.options
-      const result = await new Promise(resolve => printWindow.webContents.print({ ...options, silent: false, margins: { marginType: 'none' }, printBackground: true, copies: 1, scaleFactor: 100 }, success => resolve(success)))
+      const result = await new Promise(resolve => printWindow.webContents.print({ silent: false, ...options, ...(context.prismaSupervised === true ? { silent: false } : {}), margins: { marginType: 'none' }, printBackground: true, copies: 1, scaleFactor: 100 }, success => resolve(success)))
       if (!result) return { ok: false, error: 'La impresión fue cancelada o falló. No se reintentó el envío.' }
       return { ok: true, status: 'printed', date, number: selected.number, pages: rendering.pages, scaled: rendering.scaled, message: `Despacho ${selected.number} enviado a impresión.${rendering.scaled ? ' El PDF se ajustó proporcionalmente al papel del perfil.' : ''}` }
     } catch (error) {
