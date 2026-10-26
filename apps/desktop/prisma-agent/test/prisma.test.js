@@ -16,21 +16,52 @@ function setup(options = {}) {
     if (options.httpError) return new Response(JSON.stringify({ message: options.errorMessage || 'No disponible' }), { status: options.httpError })
     if (url.endsWith('/station/poll')) return Response.json({data: {connected: true, signals: options.signals || [{receipt_id: 10, signal_id: 3, kind: 'labels', source: 'chat', created_at: '2026-10-26 08:00:00'}]}})
     if (url.endsWith('/station/acknowledge')) return Response.json({data: {acknowledged: data.receipt_ids.length}})
+    if (url.endsWith('/station/print/next')) return Response.json({data: {job: options.supervisedJob || null}})
+    if (url.endsWith('/station/print/complete')) return Response.json({data: {recorded: true}})
     if (url.endsWith('/status')) return Response.json({ data: { slug: 'prisma', name: 'Prisma', enabled: options.disabled !== true, available: options.disabled !== true, configured: true, provider: 'gemini', model: 'gemini-2.5-flash', reason: options.disabled ? 'Desactivado' : null } })
     if (url.endsWith('/interpret')) return Response.json({ data: { message: 'Preparado', commands: options.work || [member('02')], requires_confirmation: false, plan_token: 'sealed', expires_at: Date.now() / 1000 + 120 } })
     if (claims.has(data.plan_token)) return Response.json({ message: 'Esta solicitud ya fue utilizada.' }, { status: 409 })
     claims.add(data.plan_token)
     return Response.json({ data: { id: 'id', date: options.date || today(), commands: options.work || [member('02')] } })
   }
-  register({ ipcMain: { handle: (key, fn) => { handlers[key] = fn } }, profiles: { getPrintPlan: async (_, kind) => { profiles.push(kind); if (options.off === kind) throw Error('Perfil desactivado.') } },
-    printLabels: async (_, payload) => { calls.push({ kind: 'labels', payload }); return { ok: !options.labelFail } },
-    printLetterhead: async (_, value) => { calls.push({ kind: 'letterhead', value }); if (options.printWait) await options.printWait
+  register({ ipcMain: { handle: (key, fn) => { handlers[key] = fn } }, profiles: { getPrintPlan: async (_, kind) => { profiles.push(kind); if (options.off === kind) throw Error('Perfil desactivado.') }, getPrismaPrintPlan: async (_, kind) => { profiles.push('prisma:'+kind); if (options.prismaProfileOff) throw Error('Prisma no está autorizado en el perfil local de impresora') } },
+    printLabels: async (_, payload, context) => { calls.push({ kind: 'labels', payload, ...(context ? { context } : {}) }); return { ok: !options.labelFail } },
+    printLetterhead: async (_, value, context) => { calls.push({ kind: 'letterhead', value, ...(context ? { context } : {}) }); if (options.printWait) await options.printWait
       if (options.duplicates && !value.dispatchId) return { ok: true, status: 'choose', candidates: [{ id: 7, number: value.number, kind: 'Envío', name: 'Fixture' }, { id: 8, number: value.number, kind: 'Domicilio', name: 'Fixture 2' }] }
       return { ok: !options.memberFail, error: options.memberFail ? 'No se encontró el despacho.' : undefined }
     }, stationId: '123e4567-e89b-12d3-a456-426614174000', fetchImpl })(shell)
   const invoke = (action, data = {}) => handlers[`prisma:${action}`](event, { token: TOKEN, ...data })
   return { handlers, event, contents, calls, requests, profiles, invoke, execute: () => invoke('execute', { plan_token: 'sealed', confirmed: false }) }
 }
+test('supervised WhatsApp labels automatically open the existing dialog with quantity nine only once', async () => {
+  const payload = label('381', 9).payload
+  const job = {id: 51, kind: 'labels', number: '381', quantity: 9, title:'Body Barbie',
+    variant:'Negro', source:'whatsapp', dispatch_id:null, payload}
+  const h = setup({supervisedJob:job})
+  const next = await h.invoke('supervised-next')
+  assert.equal(next.ok, true)
+  assert.deepEqual(next.job, {id:51,kind:'labels',number:'381',quantity:9,title:'Body Barbie',variant:'Negro',source:'whatsapp'})
+  assert.equal(h.calls.length, 0)
+  const result = await h.invoke('supervised-execute', {job_id:51})
+  assert.equal(result.status, 'submitted')
+  assert.equal(h.calls.length, 1)
+  assert.deepEqual(h.calls[0], {kind:'labels',payload,context:{prismaSupervised:true}})
+  assert.ok(h.profiles.includes('prisma:labels'))
+  assert.equal(h.requests.filter(x => x.url.endsWith('/station/print/complete')).length, 1)
+  assert.equal((await h.invoke('supervised-execute',{job_id:51})).ok, false)
+  assert.equal(h.calls.length, 1)
+})
+
+test('local Prisma profile disabled refuses supervised job and never touches printer handlers', async () => {
+  const h = setup({supervisedJob:{id:72,kind:'letterhead',number:'01',quantity:1,
+    title:'Membrete 01',variant:'',source:'chat',dispatch_id:null,payload:null},prismaProfileOff:true})
+  assert.equal((await h.invoke('supervised-next')).ok, true)
+  const done = await h.invoke('supervised-execute',{job_id:72})
+  assert.equal(done.status,'profile_blocked')
+  assert.equal(h.calls.length,0)
+  assert.equal(h.requests.filter(x => x.url.endsWith('/station/print/complete')).length,1)
+})
+
 test('single request claims once, uses existing letterhead handler and never selects a printer itself', async () => {
   const h = setup()
   assert.equal((await h.invoke('interpret', { text: 'Imprime el membrete 02', history: [] })).status, 'interpreted')
