@@ -25,7 +25,7 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
       const state = store.read()
       const profile = state.profiles.find(p => p.id === value.id)
       if (!profile) throw Error('Perfil desconocido')
-      const target = { ...profile, enabled: value.enabled, silentEnabled: value.enabled && value.silentEnabled, silentQueueConfirmation: null }
+      const target = { ...profile, enabled: value.enabled, silentEnabled: value.enabled && value.silentEnabled, prismaEnabled: value.enabled && profile.prismaEnabled === true, silentQueueConfirmation: null }
       const next = { ...state, profiles: state.profiles.map(p => p.id === target.id ? target : p) }
       if (target.silentEnabled) {
         const result = await inventory(window.webContents)
