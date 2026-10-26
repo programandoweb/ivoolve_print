@@ -39,8 +39,24 @@ El endpoint de ejecución `claim` sigue bloqueado con HTTP 423. El runtime Prism
 
 La estación usa un UUID guardado en `app.getPath('userData')/prisma-station.id`, separado de los perfiles de impresora. El UUID no se expone por el preload al frontend remoto. La API de Prisma usa el JWT del usuario y valida origen/ventana IPC. El backend mantiene una lista blanca para WhatsApp.
 
+## Fase supervisada con dialogo de Windows — DESACTIVADA por defecto
+
+La impresión real supervisada requiere dos autorizaciones que arrancan apagadas: (1) interruptor maestro en la configuración de Prisma, disponible solo a administradores, y (2) switch local «Autorizar Prisma» en el perfil de Etiquetas o Membretes dentro de Impresoras BETA. Desactivar BETA o un perfil revoca esa autorización local.
+
+A diferencia del modo silencioso manual, el flujo de Prisma fuerza siempre silent:false y muestra el diálogo de Windows automáticamente. No se agregan botones intermedios: la única confirmación es imprimir o cancelar en el diálogo nativo.
+
+El trabajo se valida en Laravel, se asigna solo si hay exactamente una estación online, se reclama una sola vez, se comprueba el perfil local y se llama al renderizador original de etiquetas/membretes. No hay impresión automática sin diálogo, ni reintentos después de cancelar o perder la conexión. La antigua ruta claim permanece bloqueada con HTTP 423.
+
+Órdenes naturales admitidas: «Imprime 9 etiquetas Body Barbie color negro», «Body Barbie negro, necesito 9 etiquetas», «Prisma imprime nueve etiquetas Body Barbie color negro» e «Imprime etiqueta 381, cantidad 9». También se acepta color antes del nombre del producto. La cantidad debe ser explícita, de 1 a 100, o Prisma pide aclararla. Los membretes usan una copia por despacho activo.
+
+El panel inferior de Print muestra el documento, variante, código y cantidad durante el renderizado; después señala «Enviado a cola Windows» o «Cancelado o falló». No declara físicamente impreso un trabajo sin confirmación comprobable.
+
+Despliegue: actualizar primero Laravel y ejecutar la nueva migración 2026_10_26_170000_create_prisma_supervised_print_jobs.php, después actualizar y reiniciar Electron. Con todos los switches apagados comprobar conectividad. Habilitar el interruptor global y solo uno de los perfiles locales para la primera prueba con un operador presente; dictar la orden y CANCELAR el diálogo de Windows para verificar que no hubo impresión. Después se puede probar una copia confirmada y revisar físicamente.
+
+La tabla printing_agent_print_jobs registra solicitudes, estación, usuario, cantidad, resultado y fechas. No se modifican permisos ni flujos de los otros agentes.
+
 ## Fuera de alcance
-No se habilitó impresión automática ni IA con acceso a impresoras. Los perfiles, tamaños, silent/dialog, búsqueda manual y spooler de Windows mantienen su comportamiento actual. El heartbeat no acredita conectividad con una impresora física ni con Gemini. El push a GitHub y un build Vercel tampoco prueban por sí solos Laravel, Baileys o las estaciones Windows.
+No se habilitó impresión silenciosa ni acceso directo del modelo IA a impresoras; la supervisada requiere activación global y local explícita. Los perfiles, tamaños, silent/dialog, búsqueda manual y spooler de Windows mantienen su comportamiento actual. El heartbeat no acredita conectividad con una impresora física ni con Gemini. El push a GitHub y un build Vercel tampoco prueban por sí solos Laravel, Baileys o las estaciones Windows.
 
 ## Tests
 ```bash
