@@ -1,7 +1,7 @@
 'use client'
 
-import {useEffect, useState} from 'react'
-import {prismaService, type PrismaSignal} from './prisma.service'
+import {useEffect, useRef, useState} from 'react'
+import {prismaService, type PrismaSignal, type PrismaSupervisedJob} from './prisma.service'
 
 export type PrismaLookupFeedback = {
   status: 'found' | 'not_found' | 'choose' | 'error'
@@ -27,6 +27,8 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
   const [lookupResult, setLookupResult] = useState<PrismaLookupFeedback | null>(null)
   const [simulation, setSimulation] = useState<{kind: string; number: string; source: string; at: number} | null>(null)
   const [message, setMessage] = useState('Electron sin conectar')
+  const printingRef = useRef(false)
+  const [realJob, setRealJob] = useState<{job: PrismaSupervisedJob; stage: 'rendering' | 'submitted' | 'cancelled_or_failed' | 'failed' | 'profile_blocked'; message: string} | null>(null)
 
   useEffect(() => {
     let active = true
@@ -83,6 +85,32 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
             return next
           })
         }
+        if (!printingRef.current && window.ivoolvePrisma?.supervisedNext) {
+          // Do not await the Windows dialog in the heartbeat loop. Polling must
+          // continue while the operator decides whether to print or cancel.
+          printingRef.current = true
+          void (async () => {
+            try {
+              const pending = await prismaService.supervisedNext(token)
+              if (!active) return
+              if (!pending.ok) {
+                if (pending.error) console.warn('Prisma: trabajo supervisado no disponible')
+                return
+              }
+              if (!pending.job) return
+              const job = pending.job
+              setRealJob({job, stage: 'rendering', message: 'Preparando documento. A continuación se abrirá el diálogo de Windows.'})
+              const result = await prismaService.supervisedExecute(token, job.id)
+              if (!active) return
+              setRealJob({job, stage: result.status === 'submitted' ? 'submitted'
+                : result.status === 'profile_blocked' ? 'profile_blocked'
+                : result.status === 'cancelled_or_failed' ? 'cancelled_or_failed' : 'failed',
+                message: result.message || result.error || 'No fue posible completar la impresión supervisada.'})
+            } catch {
+              if (active) setMessage('La conexión continúa, pero no fue posible consultar impresiones supervisadas.')
+            } finally {printingRef.current = false}
+          })()
+        }
       } catch (e) {
         if (active) {setConnected(false); setMessage(e instanceof Error ? e.message : 'No fue posible comprobar la estación')}
       } finally {polling = false}
@@ -127,6 +155,20 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
         </div>
       })}
     </div>
+    {realJob && <div role="status" aria-live="polite"
+      className={`mt-3 rounded-xl border px-4 py-3 text-sm ${realJob.stage === 'submitted'
+        ? 'border-green-200 bg-green-50 text-green-900'
+        : realJob.stage === 'rendering' ? 'border-amber-200 bg-amber-50 text-amber-950'
+          : 'border-red-200 bg-red-50 text-red-900'}`}>
+      <strong>{realJob.stage === 'rendering' ? 'Preparando impresión supervisada'
+        : realJob.stage === 'submitted' ? 'Enviado a la cola Windows'
+          : 'Impresión no enviada'}:</strong>{' '}
+      {realJob.job.kind === 'letterhead' ? 'Membrete' : 'Etiqueta'} — {realJob.job.title}
+      {realJob.job.variant ? ` · ${realJob.job.variant}` : ''}. Código {realJob.job.number}.
+      {' '}Cantidad: <strong>{realJob.job.quantity}</strong>.
+      <p className="mt-1 text-xs">{realJob.message}</p>
+      <p className="mt-1 text-xs">Origen: {realJob.job.source}. La impresión NO es silenciosa; decide en el diálogo de Windows.</p>
+    </div>}
     {notice && <div role="status" aria-live="polite" className={`mt-3 rounded-xl border px-4 py-3 text-sm ${noticeColor}`}>
       <strong>{notice.status === 'found' ? (noticeIsMembrete ? 'Membrete encontrado' : 'Etiqueta encontrada') : notice.status === 'not_found' ? (noticeIsMembrete ? 'Membrete no encontrado' : 'Etiqueta no encontrada') : notice.status === 'choose' ? 'Selección necesaria' : 'Error de consulta'}:</strong>{' '}
       {noticeMessage}
