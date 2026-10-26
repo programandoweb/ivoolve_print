@@ -136,6 +136,21 @@ test('numbered document simulations are only polled and acknowledged; never prin
   assert.equal(h.profiles.length, 0)
   assert.deepEqual(h.requests.map(r => new URL(r.url).pathname.split('/').pop()), ['poll', 'acknowledge'])
 })
+test('regression: numbered WhatsApp letterhead 01 does not turn station offline', async () => {
+  const h = setup({signals: [
+    {receipt_id: 30, signal_id: 14, kind: 'letterhead', source: 'whatsapp', document_number: '01', created_at: '2026-10-26 10:20:00'},
+  ]})
+  const result = await h.invoke('poll')
+  assert.equal(result.ok, true, result.error)
+  assert.equal(result.connected, true)
+  assert.equal(result.signals[0].document_number, '01')
+  const ack = await h.invoke('acknowledge', {receipt_ids: [30]})
+  assert.equal(ack.ok, true)
+  assert.equal(ack.acknowledged, 1)
+  assert.equal(h.calls.length, 0)
+  assert.equal(h.profiles.length, 0)
+})
+
 test('malformed document simulation is rejected without accessing a printer or acknowledging it', async () => {
   const h = setup({signals: [{receipt_id: 20, signal_id: 9, kind: 'letterhead', source: 'chat', document_number: '../../bad', created_at: '2026-10-26 09:00:00'}]})
   assert.equal((await h.invoke('poll')).ok, false)
