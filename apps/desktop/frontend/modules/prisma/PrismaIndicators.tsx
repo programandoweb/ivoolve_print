@@ -10,6 +10,7 @@ export type PrismaLookupFeedback = {
   title?: string
   variant?: string
   source?: string
+  at?: number
 }
 
 const LABELS = [
@@ -64,6 +65,7 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
               title: last.document_title || undefined,
               variant: last.document_variant || undefined,
               source: last.source,
+              at,
             })
           }
           const simulations = result.signals.filter(s => s.document_number && !s.lookup_status && ['labels', 'letterhead'].includes(s.kind))
@@ -88,7 +90,7 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
     return () => {active = false; clearInterval(interval)}
   }, [token])
 
-  const notice = manualResult || lookupResult
+  const notice = manualResult && (!lookupResult?.at || (manualResult.at || 0) >= lookupResult.at) ? manualResult : lookupResult
   const noticeColor = notice?.status === 'found'
     ? 'border-green-200 bg-green-50 text-green-900'
     : notice?.status === 'not_found' || notice?.status === 'error'
