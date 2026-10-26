@@ -41,6 +41,8 @@ function createWindow() {
   attachBetaPrinters(win)
   attachDispatchPrinting(win)
   attachPrisma(win)
+  // Temporary Prisma IPC diagnostics: open DevTools only in the main Electron shell.
+  win.webContents.openDevTools({ mode: 'detach' })
   //win.loadURL('http://localhost:3030')
   win.loadURL('https://ivoolve-print-frontend.vercel.app')
 }
