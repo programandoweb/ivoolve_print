@@ -3,6 +3,7 @@ const invoke = (method, value) => ipcRenderer.invoke(`beta-printers:${method}`, 
 contextBridge.exposeInMainWorld('betaPrinters', Object.freeze({
   getStatus: () => invoke('getStatus'), setEnabled: value => invoke('setEnabled', value),
   setProfileSettings: value => invoke('setProfileSettings', value),
+  setPrismaEnabled: value => invoke('setPrismaEnabled', value),
   savePaper: value => invoke('savePaper', value),
   calibrateProfile: value => invoke('calibrateProfile', value),
   setLetterheadProfile: id => invoke('setLetterheadProfile', id),
