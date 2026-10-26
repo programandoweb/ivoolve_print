@@ -94,7 +94,7 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
     if (typeof stationId !== 'string' || !/^[0-9a-f-]{36}$/.test(stationId)) throw Error('Identidad de la estación no disponible.')
     const result = await request('station/poll', value?.token, { station_id: stationId })
     if (result.connected !== true || !Array.isArray(result.signals) || result.signals.length > 20
-      || result.signals.some(s => !Number.isSafeInteger(s.receipt_id) || !['labels', 'letterhead', 'channel'].includes(s.kind) || (s.document_number != null && (typeof s.document_number !== 'string' || !/^\\d{1,12}$/.test(s.document_number))))) throw Error('Señales no reconocidas.')
+      || result.signals.some(s => !Number.isSafeInteger(s.receipt_id) || !['labels', 'letterhead', 'channel'].includes(s.kind) || (s.document_number != null && (typeof s.document_number !== 'string' || !/^[0-9]{1,12}$/.test(s.document_number))))) throw Error('Señales no reconocidas.')
     return { ok: true, connected: true, signals: result.signals }
   })
   handle('prisma:acknowledge', async (_event, value) => {
