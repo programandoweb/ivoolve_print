@@ -143,6 +143,23 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
     return { ok: true, job: { id: job.id, kind: job.kind, number: job.number, quantity: job.quantity,
       title: job.title, variant: job.variant, source: job.source } }
   })
+  // Whitelist internal profile-validation failures. Never print arbitrary exception text,
+  // printer identifiers, filesystem paths, JWTs, or document contents to diagnostics.
+  const profileDiagnostics = {
+    'Origen Prisma no autorizado': ['ORIGIN', 'La ventana solicitante no coincide con la ventana principal autorizada de Electron.'],
+    'Configuración de impresoras desactivada': ['BETA_DISABLED', 'Activa Perfiles BETA en la configuración local.'],
+    'Prisma no está autorizado en el perfil local de impresora': ['PROFILE_AUTH', 'Selecciona el perfil correspondiente, vincula su impresora y habilita Autorizar Prisma.'],
+    'El perfil cambió durante la validación': ['PROFILE_CHANGED', 'El perfil cambió mientras se comprobaba la impresora; revisa la configuración local.'],
+    'Impresora no identificada de forma unívoca': ['IDENTITY_UNVERIFIED', 'Vuelve a vincular el perfil con la cola de impresión correcta en Impresoras BETA.'],
+    'Existen impresoras ambiguas; verifique el perfil en Impresoras BETA': ['AMBIGUOUS_PRINTER', 'La identidad coincide con varias colas; vincula una cola inequívoca.'],
+    'Windows indica que la impresora está fuera de línea': ['PRINTER_OFFLINE', 'Comprueba en Windows que la cola vinculada esté en línea.'],
+  }
+  const explainSupervisedError = (error, stage) => {
+    if (stage !== 'validate_profile') return { code: 'DOCUMENT_OR_DIALOG', hint: 'Falló la preparación o apertura del diálogo; revisar el proceso de impresión.' }
+    const entry = profileDiagnostics[String(error?.message || '')]
+    return entry ? { code: entry[0], hint: entry[1] }
+      : { code: 'PROFILE_VALIDATION_UNKNOWN', hint: 'Fallo inesperado en validación de perfil; revisar el inventario de impresoras y la configuración local.' }
+  }
   handle('prisma:supervised-execute', async (event, value) => {
     const selected = supervised.get(event.sender)
     if (!selected || selected.job.id !== value?.job_id || selected.token !== value?.token) {
@@ -174,8 +191,8 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
           : 'El diálogo se canceló o falló. No se reintentó la impresión.'
       }
     } catch (error) {
-      // Stage-only local diagnostics: no secrets, document content or bearer tokens.
-      console.warn('[Prisma supervised] Execution failed at stage:', stage, 'job_id:', job.id, 'error_type:', error?.name || 'Error')
+      const diagnostic = explainSupervisedError(error, stage)
+      console.warn('[Prisma supervised] EXECUTION FAILED', { job_id: job.id, kind: job.kind, stage, code: diagnostic.code, action: diagnostic.hint, error_type: error instanceof TypeError ? 'TypeError' : 'Error', retry: 'disabled', windows_dialog_opened: false })
       outcome = String(error?.message || '').includes('perfil') || String(error?.message || '').includes('Prisma no está autorizado')
         ? 'profile_blocked' : 'failed'
       message = outcome === 'profile_blocked'
