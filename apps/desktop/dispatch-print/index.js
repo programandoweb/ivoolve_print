@@ -48,7 +48,10 @@ function register({ BrowserWindow, ipcMain, protocol, net, profiles, fetchImpl =
     else job.resolve({ pages: result.pages, scaled: result.scaled })
     return true
   })
-  const run = async (event, value) => {
+  const run = async (event, value, context = {}) => {
+    const printPlan = context.prismaSupervised === true
+      ? () => profiles.getPrismaPrintPlan(event, 'letterhead')
+      : () => profiles.getPrintPlan(event, 'letterhead')
     authorize(event)
     if (pending.has(event.sender)) return { ok: false, error: 'Ya hay un membrete en proceso. Espera a que finalice.' }
     pending.add(event.sender)
@@ -57,7 +60,7 @@ function register({ BrowserWindow, ipcMain, protocol, net, profiles, fetchImpl =
       validateInput(value)
       const date = today(now())
       // Check the configured profile before authenticated lookups; never borrow the labels profile.
-      await profiles.getPrintPlan(event, 'letterhead')
+      await printPlan()
       const matches = await service.search(value, date)
       if (today(now()) !== date) throw Error('Cambió el día de despacho. Vuelve a buscar.')
       if (!matches.length) throw Error(`No se encontró el despacho ${value.number} de hoy (${date}).`)
@@ -82,7 +85,7 @@ function register({ BrowserWindow, ipcMain, protocol, net, profiles, fetchImpl =
       if (JSON.stringify(current) !== JSON.stringify(plan)) throw Error('Cambió la configuración de Membretes. Vuelve a enviar el trabajo.')
       if (today(now()) !== date) throw Error('Cambió el día de despacho. Vuelve a buscar.')
       const { margins, ...options } = plan.options
-      const result = await new Promise(resolve => printWindow.webContents.print({ silent: false, ...options, margins: { marginType: 'none' }, printBackground: true, copies: 1, scaleFactor: 100 }, success => resolve(success)))
+      const result = await new Promise(resolve => printWindow.webContents.print({ ...options, silent: false, margins: { marginType: 'none' }, printBackground: true, copies: 1, scaleFactor: 100 }, success => resolve(success)))
       if (!result) return { ok: false, error: 'La impresión fue cancelada o falló. No se reintentó el envío.' }
       return { ok: true, status: 'printed', date, number: selected.number, pages: rendering.pages, scaled: rendering.scaled, message: `Despacho ${selected.number} enviado a impresión.${rendering.scaled ? ' El PDF se ajustó proporcionalmente al papel del perfil.' : ''}` }
     } catch (error) {
