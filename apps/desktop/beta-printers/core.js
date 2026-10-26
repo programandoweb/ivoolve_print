@@ -18,6 +18,15 @@ function resolve(identity, printers) {
   const exact = matches.filter(p => p.identity.name === identity.name && p.identity.port === identity.port && p.identity.pnp === identity.pnp)
   return { state: exact.length === 1 ? 'probable' : 'not-found', candidates: exact }
 }
+// Prisma-only: require one exact stored queue when drivers are shared.
+function resolvePrisma(identity, printers) {
+  if (!identity) return { state: 'not-found', candidates: [] }
+  if (identity.serial) return resolve(identity, printers)
+  const exact = printers.filter(p => p.identity.name === identity.name &&
+    p.identity.driver === identity.driver && p.identity.port === identity.port &&
+    p.identity.pnp === identity.pnp)
+  return { state: exact.length === 1 ? 'probable' : exact.length > 1 ? 'ambiguous' : 'not-found', candidates: exact }
+}
 function initial() {
   const profiles = ['Etiquetas', 'Membretes', 'Despachos'].map(label => ({ id: randomUUID(), label, identity: null, enabled: true, silentEnabled: false, prismaEnabled: false, silentQueueConfirmation: null, paper: defaultPaper(label), paperCustomized: false }))
   return { version: 1, station: randomUUID(), enabled: false, labelsProfileId: profiles[0].id, letterheadProfileId: profiles[1].id, updatedAt: new Date().toISOString(), profiles }
@@ -67,4 +76,4 @@ class Store {
     return value
   }
 }
-module.exports = { Store, resolve, validIdentity, text }
+module.exports = { Store, resolve, resolvePrisma, validIdentity, text }
