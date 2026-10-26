@@ -123,6 +123,27 @@ test('heartbeat and receipt of connectivity signals never access any printer han
   assert.ok(h.requests.every(r => r.config.headers.Authorization === `Bearer ${TOKEN}`))
   assert.deepEqual(h.requests.map(r => new URL(r.url).pathname.split('/').pop()), ['poll', 'acknowledge'])
 })
+test('numbered document simulations are only polled and acknowledged; never printed', async () => {
+  const h = setup({signals: [
+    {receipt_id: 20, signal_id: 9, kind: 'letterhead', source: 'chat', document_number: '02', created_at: '2026-10-26 09:00:00'},
+    {receipt_id: 21, signal_id: 10, kind: 'labels', source: 'whatsapp', document_number: '123', created_at: '2026-10-26 09:00:00'},
+  ]})
+  const polled = await h.invoke('poll')
+  assert.equal(polled.ok, true)
+  assert.deepEqual(polled.signals.map(signal => signal.document_number), ['02', '123'])
+  assert.equal((await h.invoke('acknowledge', {receipt_ids: [20, 21]})).acknowledged, 2)
+  assert.equal(h.calls.length, 0)
+  assert.equal(h.profiles.length, 0)
+  assert.deepEqual(h.requests.map(r => new URL(r.url).pathname.split('/').pop()), ['poll', 'acknowledge'])
+})
+test('malformed document simulation is rejected without accessing a printer or acknowledging it', async () => {
+  const h = setup({signals: [{receipt_id: 20, signal_id: 9, kind: 'letterhead', source: 'chat', document_number: '../../bad', created_at: '2026-10-26 09:00:00'}]})
+  assert.equal((await h.invoke('poll')).ok, false)
+  assert.equal(h.calls.length, 0)
+  assert.equal(h.profiles.length, 0)
+  assert.equal(h.requests.length, 1)
+})
+
 test('invalid diagnostic receipt list is blocked before any API call', async () => {
   const h = setup()
   for (const ids of [[0], [-1], ['1'], [], Array(21).fill(2)]) {
