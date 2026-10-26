@@ -14,6 +14,7 @@ export default function PrismaIndicators({token}: {token?: string}) {
   const [connected, setConnected] = useState(false)
   const [flashes, setFlashes] = useState<Partial<Record<PrismaSignal['kind'], {at: number; source: string}>>>({})
   const [now, setNow] = useState(Date.now())
+  const [simulation, setSimulation] = useState<{kind: string; number: string; source: string; at: number} | null>(null)
   const [message, setMessage] = useState('Electron sin conectar')
 
   useEffect(() => {
@@ -21,6 +22,7 @@ export default function PrismaIndicators({token}: {token?: string}) {
     let polling = false
     setConnected(false)
     setFlashes({})
+    setSimulation(null)
     if (!token || !window.ivoolvePrisma?.poll) {
       setMessage(!token ? 'Inicia sesión para conectar la estación' : 'Abre la aplicación Electron actualizada')
       return
@@ -35,6 +37,11 @@ export default function PrismaIndicators({token}: {token?: string}) {
         setConnected(true)
         setMessage('Comunicación con Laravel confirmada')
         if (result.signals.length > 0) {
+          const simulations = result.signals.filter(s => s.document_number && ['labels', 'letterhead'].includes(s.kind))
+          if (simulations.length) {
+            const last = simulations[simulations.length - 1]
+            setSimulation({kind: last.kind, number: last.document_number!, source: last.source, at: Date.now()})
+          }
           const receiptIds = result.signals.map(s => s.receipt_id)
           const ack = await prismaService.acknowledge(token, receiptIds)
           if (!active) return
@@ -75,6 +82,11 @@ export default function PrismaIndicators({token}: {token?: string}) {
         </div>
       })}
     </div>
+    {simulation && <div role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-950">
+      <strong>{now - simulation.at < 3500 ? 'Simulando impresión' : 'Simulación de conectividad completada'}:</strong>{' '}
+      {simulation.kind === 'letterhead' ? 'Membrete' : 'Etiqueta'} {simulation.number}
+      <span className="ml-2 text-xs">Origen: {simulation.source}. No se imprimió ningún documento. Identificador sin validar contra el catálogo.</span>
+    </div>}
     <p className="mt-3 text-center text-[11px] text-slate-500">Prueba etiqueta · Prueba membrete · Prueba canal. Los indicadores no comprueban impresoras físicas ni generan trabajos de impresión.</p>
   </section>
 }
