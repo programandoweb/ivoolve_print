@@ -154,8 +154,10 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
     const job = selected.job
     let outcome = 'failed'
     let message = 'No se completó el envío a la cola Windows.'
+    let stage = 'validate_profile'
     try {
       await profiles.getPrismaPrintPlan(event, job.kind)
+      stage = 'prepare_and_open_dialog'
       const result = job.kind === 'labels'
         ? await printLabels(event, job.payload, { prismaSupervised: true })
         : await printLetterhead(event, {
@@ -172,6 +174,8 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
           : 'El diálogo se canceló o falló. No se reintentó la impresión.'
       }
     } catch (error) {
+      // Stage-only local diagnostics: no secrets, document content or bearer tokens.
+      console.warn('[Prisma supervised] Execution failed at stage:', stage, 'job_id:', job.id, 'error_type:', error?.name || 'Error')
       outcome = String(error?.message || '').includes('perfil') || String(error?.message || '').includes('Prisma no está autorizado')
         ? 'profile_blocked' : 'failed'
       message = outcome === 'profile_blocked'
