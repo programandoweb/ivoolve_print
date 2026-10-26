@@ -561,6 +561,7 @@ export default function Page() {
         Lista de órdenes
       </h1>
 
+      <PrismaIndicators token={user?.token} />
       <PrismaAssistant token={user?.token} />
 
       {!data && (
