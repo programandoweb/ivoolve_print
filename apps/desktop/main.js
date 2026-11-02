@@ -38,6 +38,8 @@ function createWindow() {
       additionalArguments: [`--ivoolve-frontend-origin=${runtimeConfig.frontendOrigin}`],
       contextIsolation: true,
       nodeIntegration: false,
+      // El polling de Prisma corre en la página: sin esto Chromium lo frena al minimizar y la estación aparece desconectada.
+      backgroundThrottling: false,
     },
   })
   attachBetaPrinters(win)
