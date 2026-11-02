@@ -87,6 +87,18 @@ function client(fetchImpl = fetch) {
     if (order.status !== 'dispatch' || Number(order.dispatch_order_number) !== Number(value.number) || dispatchDay(order.dispatch_order_por) !== day || order.order_number !== candidate.reference) throw Error('El despacho cambió o no corresponde al día actual. Vuelve a buscar.')
     return request(`pdf/print-dispatch?${new URLSearchParams({ value: candidate.reference })}`, null, true)
   }
-  return { search, download }
+  // Explicit, station-verified dispatch from Prisma's PWA button. Unlike a
+  // number-only manual lookup, the ID identifies one historical dispatch.
+  async function downloadExact(value) {
+    validateInput(value)
+    if (value.dispatchId === undefined) throw Error('Selección de despacho inválida.')
+    const order = await detail(value.dispatchId, value.token)
+    if (order.status !== 'dispatch' || Number(order.dispatch_order_number) !== Number(value.number)
+      || typeof order.order_number !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(order.order_number)) {
+      throw Error('El despacho cambió o no coincide con el membrete solicitado.')
+    }
+    return request(`pdf/print-dispatch?${new URLSearchParams({ value: order.order_number })}`, null, true)
+  }
+  return { search, download, downloadExact }
 }
 module.exports = { client, today, dispatchDay, validateInput, bytes }

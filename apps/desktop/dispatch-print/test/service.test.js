@@ -60,3 +60,27 @@ test('invalid input/auth/errors fail closed without credentials or arbitrary end
   const tooLarge = client(async () => new Response('x', { headers: { 'content-length': '3000000' } }))
   await assert.rejects(tooLarge.search({ number: '02', token }, day), /tamaño permitido/)
 })
+
+test('verified dispatch ID prints the original PDF without today-only number search', async () => {
+  const calls = []
+  const service = client(async (url, options) => {
+    calls.push(url)
+    const parsed = new URL(url)
+    if (parsed.pathname.endsWith('/dashboard/dispatches/6571')) {
+      assert.equal(options.headers.Authorization, 'Bearer ' + token)
+      return new Response(JSON.stringify({ data: { order: {
+        id: 6571, status: 'dispatch', dispatch_order_number: 1,
+        dispatch_order_por: '2026-10-28T11:14:26', order_number: 'ozQMTWcN',
+      } } }), { headers: { 'content-type': 'application/json' } })
+    }
+    assert.equal(parsed.pathname.endsWith('/pdf/print-dispatch'), true)
+    assert.equal(parsed.searchParams.get('value'), 'ozQMTWcN')
+    return new Response('%PDF-1.7\\nfixture', { headers: { 'content-type': 'application/pdf' } })
+  })
+  assert.match((await service.downloadExact({ dispatchId: 6571, number: '1', token })).toString(), /^%PDF-/)
+  assert.equal(calls.length, 2)
+  assert.ok(calls.every(url => !url.includes('dispatches?')))
+  await assert.rejects(service.downloadExact({ dispatchId: 6571, number: '2', token }), /no coincide/)
+  assert.equal(calls.length, 3)
+  await assert.rejects(service.downloadExact({ number: '1', token }), /Selección/)
+})

@@ -59,17 +59,19 @@ function register({ BrowserWindow, ipcMain, protocol, net, profiles, fetchImpl =
     try {
       validateInput(value)
       const date = today(now())
+      const exactDispatch = context.prismaSupervised === true && value.dispatchId !== undefined
       // Check the configured profile before authenticated lookups; never borrow the labels profile.
       await printPlan()
-      const matches = await service.search(value, date)
-      if (today(now()) !== date) throw Error('Cambió el día de despacho. Vuelve a buscar.')
-      if (!matches.length) throw Error(`No se encontró el despacho ${value.number} de hoy (${date}).`)
-      if (value.dispatchId === undefined && matches.length > 1) return { ok: true, status: 'choose', date, candidates: matches.map(({ reference, ...candidate }) => candidate) }
-      const selected = value.dispatchId === undefined ? matches[0] : matches.find(p => p.id === value.dispatchId)
+      const matches = exactDispatch ? [] : await service.search(value, date)
+      if (!exactDispatch && today(now()) !== date) throw Error('Cambió el día de despacho. Vuelve a buscar.')
+      if (!exactDispatch && !matches.length) throw Error(`No se encontró el despacho ${value.number} de hoy (${date}).`)
+      if (!exactDispatch && value.dispatchId === undefined && matches.length > 1) return { ok: true, status: 'choose', date, candidates: matches.map(({ reference, ...candidate }) => candidate) }
+      const selected = exactDispatch ? { id: value.dispatchId, number: value.number }
+        : value.dispatchId === undefined ? matches[0] : matches.find(p => p.id === value.dispatchId)
       if (!selected) throw Error('El despacho elegido no coincide con la búsqueda de hoy.')
-      const pdf = await service.download(selected, value, date)
+      const pdf = exactDispatch ? await service.downloadExact(value) : await service.download(selected, value, date)
       const plan = await printPlan()
-      if (today(now()) !== date) throw Error('Cambió el día de despacho. Vuelve a buscar.')
+      if (!exactDispatch && today(now()) !== date) throw Error('Cambió el día de despacho. Vuelve a buscar.')
       printWindow = new BrowserWindow({ show: false, webPreferences: { preload: path.join(__dirname, 'pdf-preload.js'), contextIsolation: true, nodeIntegration: false, sandbox: true } })
       printWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
       printWindow.webContents.on('will-navigate', e => e.preventDefault())
@@ -83,7 +85,7 @@ function register({ BrowserWindow, ipcMain, protocol, net, profiles, fetchImpl =
       clearTimeout(timeout)
       const current = await printPlan()
       if (JSON.stringify(current) !== JSON.stringify(plan)) throw Error('Cambió la configuración de Membretes. Vuelve a enviar el trabajo.')
-      if (today(now()) !== date) throw Error('Cambió el día de despacho. Vuelve a buscar.')
+      if (!exactDispatch && today(now()) !== date) throw Error('Cambió el día de despacho. Vuelve a buscar.')
       const { margins, ...options } = plan.options
       const result = await new Promise(resolve => printWindow.webContents.print({ silent: false, ...options, ...(context.prismaSupervised === true ? { silent: false } : {}), margins: { marginType: 'none' }, printBackground: true, copies: 1, scaleFactor: 100 }, success => resolve(success)))
       if (!result) return { ok: false, error: 'La impresión fue cancelada o falló. No se reintentó el envío.' }

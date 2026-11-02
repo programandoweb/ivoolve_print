@@ -21,6 +21,7 @@ function setup({ duplicate = false, silent = true, printSuccess = true, renderer
   }
   const profiles = { getPrintPlan: async (_, kind) => { kinds.push(kind); if (profileOff) throw Error('Perfil de impresión desactivado.')
     return { options: { ...(silent ? { silent: true, deviceName: 'Membretes 2026' } : {}), ...paperOptions(paper, silent) }, css: '', paper } } }
+  profiles.getPrismaPrintPlan = profiles.getPrintPlan
   const fetchImpl = async url => {
     fetches++; const u = new URL(url)
     const json = data => new Response(JSON.stringify({ data }), { headers: { 'content-type': 'application/json' } })
@@ -32,7 +33,7 @@ function setup({ duplicate = false, silent = true, printSuccess = true, renderer
   const attach = register({ BrowserWindow: Window, profiles, ipcMain: { handle: (key, fn) => { handlers[key] = fn } }, protocol: { handle: (_, fn) => { protocolHandler = fn } }, net: { fetch: async () => new Response('asset') }, fetchImpl, now: () => new Date('2026-10-24T20:00:00Z') })
   const shell = { webContents: { mainFrame: { url: 'https://ivoolve-print-frontend.vercel.app/dashboard' } } }; attach(shell)
   const event = { sender: shell.webContents, senderFrame: shell.webContents.mainFrame }
-  return { handlers, event, prints, windows, kinds, protocolHandler, fetches: () => fetches, run: value => handlers['dispatch-print:run'](event, { number: '02', token: 'a.b.c', ...value }) }
+  return { handlers, event, prints, windows, kinds, protocolHandler, fetches: () => fetches, run: value => handlers['dispatch-print:run'](event, { number: '02', token: 'a.b.c', ...value }), supervised: value => attach.run(event, { number: '02', token: 'a.b.c', ...value }, { prismaSupervised: true }) }
 }
 test('dispatcher prints original PDF once using Membretes mode, exact device and local renderer', async () => {
   for (const silent of [false, true]) {
@@ -68,4 +69,14 @@ test('IPC main-frame/origin ownership; protocol serves only fixed local assets',
   assert.equal(assetPath('ivoolve-dispatch://print/pdf.mjs?secret=1', '/package'), null)
   assert.equal((await h.protocolHandler({ method: 'POST', url: DOCUMENT })).status, 404)
   assert.equal((await h.protocolHandler({ method: 'GET', url: DOCUMENT })).status, 200)
+})
+
+test('Prisma supervised dispatch prints the exact historical PDF with Membretes, no daily search', async () => {
+  const h = setup({ silent: false })
+  const response = await h.supervised({ dispatchId: 1 })
+  assert.equal(response.ok, true)
+  assert.equal(h.prints.length, 1)
+  assert.equal(h.prints[0].silent, false)
+  assert.equal(h.fetches(), 2)
+  assert.ok(h.kinds.every(kind => kind === 'letterhead'))
 })
