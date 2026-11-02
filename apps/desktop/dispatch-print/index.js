@@ -50,7 +50,7 @@ function register({ BrowserWindow, ipcMain, protocol, net, profiles, fetchImpl =
   })
   const run = async (event, value, context = {}) => {
     const printPlan = context.prismaSupervised === true
-      ? () => profiles.getPrismaPrintPlan(event, 'letterhead')
+      ? () => profiles.getPrismaPrintPlan(event, 'letterhead', { confirmed: context.prismaConfirmed === true })
       : () => profiles.getPrintPlan(event, 'letterhead')
     authorize(event)
     if (pending.has(event.sender)) return { ok: false, error: 'Ya hay un membrete en proceso. Espera a que finalice.' }

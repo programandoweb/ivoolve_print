@@ -3,6 +3,19 @@ const { apiBase, backendKey, frontendOrigin: ORIGIN } = require('../runtime-conf
 function token(value) {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_.-]{1,8192}$/.test(value)) throw Error('Inicia sesión nuevamente.')
 }
+// Etiquetas de una orden de producción: varias variantes en un solo trabajo (el servidor las resuelve).
+const PRODUCTION_MAX_ROWS = 40; const PRODUCTION_MAX_ROW_COPIES = 500; const PRODUCTION_MAX_COPIES = 1000
+function productionLabels(payload, quantity) {
+  const rows = payload?.print
+  if (!Array.isArray(rows) || rows.length < 1 || rows.length > PRODUCTION_MAX_ROWS || typeof payload.abbreviation !== 'string' || !payload.abbreviation || payload.abbreviation.length > 20) throw Error('Datos de etiquetas de producción inválidos.')
+  let total = 0
+  for (const row of rows) {
+    if (!['title', 'code', 'variant_name', 'abbreviation'].every(key => typeof row[key] === 'string' && row[key].length <= 1000) || !row.code
+      || !Number.isSafeInteger(row.quantity) || row.quantity < 1 || row.quantity > PRODUCTION_MAX_ROW_COPIES) throw Error('Datos de etiquetas de producción inválidos.')
+    total += row.quantity
+  }
+  if (total !== quantity || total > PRODUCTION_MAX_COPIES) throw Error('Datos de etiquetas de producción inválidos.')
+}
 // Clave de backend del renderer ('prod' por defecto); nunca una URL.
 function apiBackend(value) { return backendKey(value?.backend) }
 function commands(value) {
@@ -129,17 +142,20 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
     const job = received.job
     if (job != null) console.info('[Prisma supervised] Job claimed; opening supervised flow, job_id:', job.id)
     if (job == null) return { ok: true, job: null }
+    const production = job.production_order_id != null
     if (!Number.isSafeInteger(job.id) || job.id < 1
         || !['labels', 'letterhead'].includes(job.kind)
         || typeof job.number !== 'string' || !/^[0-9]{1,12}$/.test(job.number)
         || !Number.isSafeInteger(job.quantity) || job.quantity < 1
-        || job.quantity > (job.kind === 'labels' ? 100 : 1)
+        || job.quantity > (job.kind === 'labels' ? (production ? PRODUCTION_MAX_COPIES : 100) : 1)
         || typeof job.title !== 'string' || job.title.length > 120
         || typeof job.variant !== 'string' || job.variant.length > 100
         || (job.dispatch_id != null && (!Number.isSafeInteger(job.dispatch_id) || job.dispatch_id < 1))
+        || (production && (job.kind !== 'labels' || !Number.isSafeInteger(job.production_order_id) || job.production_order_id < 1))
         || (job.kind === 'labels' && !job.payload)
         || (job.kind === 'letterhead' && job.payload != null)) throw Error('Trabajo supervisado no válido; no se imprimió.')
-    commands([{ kind: job.kind, number: job.number, quantity: job.quantity,
+    if (production) productionLabels(job.payload, job.quantity)
+    else commands([{ kind: job.kind, number: job.number, quantity: job.quantity,
       ...(job.kind === 'labels' ? { payload: job.payload } : {}) }])
     supervised.set(event.sender, { job, token: value.token, backend: apiBackend(value) })
     return { ok: true, job: { id: job.id, kind: job.kind, number: job.number, quantity: job.quantity,
@@ -175,14 +191,16 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
     let message = 'No se completó el envío a la cola Windows.'
     let stage = 'validate_profile'
     try {
-      await profiles.getPrismaPrintPlan(event, job.kind)
+      // Solo lo pedido y confirmado en la PWA (source 'print') puede salir sin diálogo; chat y WhatsApp siempre con diálogo.
+      const confirmed = job.source === 'print'
+      await profiles.getPrismaPrintPlan(event, job.kind, { confirmed })
       stage = 'prepare_and_open_dialog'
       const result = job.kind === 'labels'
-        ? await printLabels(event, job.payload, { prismaSupervised: true })
+        ? await printLabels(event, job.payload, { prismaSupervised: true, prismaConfirmed: confirmed })
         : await printLetterhead(event, {
           token: selected.token, number: job.number, backend: selected.backend,
           ...(job.dispatch_id != null ? { dispatchId: job.dispatch_id } : {}),
-        }, { prismaSupervised: true })
+        }, { prismaSupervised: true, prismaConfirmed: confirmed })
       if (result?.ok && result.status !== 'choose') {
         outcome = 'submitted'
         message = 'El operador confirmó el diálogo. Enviado a la cola Windows; no se confirma la salida física.'

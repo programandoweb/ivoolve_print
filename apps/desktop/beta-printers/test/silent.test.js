@@ -283,7 +283,7 @@ test('letterhead plan uses independent Membretes destination, modes and 101x24 s
   await assert.rejects(h.handlers['beta-printers:setLetterheadProfile'](h.event, id), /Origen/)
 })
 
-test('Prisma letterhead plan is silent only when the Membretes profile has silent mode armed; labels keep the dialog', async t => {
+test('Prisma plan is silent only for operator-confirmed jobs on a profile with silent mode armed', async t => {
   const h = await runtime(t)
   h.open()
   const event = { sender: h.windows[1].webContents, senderFrame: h.windows[1].webContents.mainFrame }
@@ -293,10 +293,13 @@ test('Prisma letterhead plan is silent only when the Membretes profile has silen
   assert.equal((await invoke('setLetterheadProfile', b)).ok, true); assert.equal((await invoke('setLabelsProfile', b)).ok, true)
   assert.equal((await invoke('setPrismaEnabled', { id: b, enabled: true })).ok, true)
   const shell = { sender: h.windows[0].webContents, senderFrame: h.windows[0].webContents.mainFrame }
-  const plan = kind => h.profileController.getPrismaPrintPlan(shell, kind)
-  assert.equal((await plan('letterhead')).options.silent, false)
+  const plan = (kind, context) => h.profileController.getPrismaPrintPlan(shell, kind, context)
+  assert.equal((await plan('letterhead', { confirmed: true })).options.silent, false)
   assert.equal((await invoke('setProfileSettings', { id: b, enabled: true, silentEnabled: true })).ok, true)
-  const silent = (await plan('letterhead')).options
+  const silent = (await plan('letterhead', { confirmed: true })).options
   assert.equal(silent.silent, true); assert.equal(silent.deviceName, 'Labels')
-  assert.equal((await plan('labels')).options.silent, false)
+  assert.equal((await plan('labels', { confirmed: true })).options.silent, true)
+  // chat/WhatsApp (sin confirmación de la PWA) conservan siempre el diálogo
+  assert.equal((await plan('letterhead')).options.silent, false)
+  assert.equal((await plan('labels', { confirmed: false })).options.silent, false)
 })

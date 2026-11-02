@@ -193,8 +193,8 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     if (store.read() !== state) throw Error('Configuración modificada durante la impresión. Vuelva a enviar el trabajo.')
     return { options: { ...silentOptions(state, result.printers, profile.id), ...options }, css, paper }
   }
-  // Prisma-supervised jobs: solo los membretes heredan silentEnabled del perfil local.
-  attach.getPrismaPrintPlan = async (event, kind = 'labels') => {
+  // Prisma-supervised jobs: heredan silentEnabled del perfil local solo si el operador los confirmó en la PWA.
+  attach.getPrismaPrintPlan = async (event, kind = 'labels', context = {}) => {
     let origin = ''
     try { origin = new URL(event.senderFrame.url).origin } catch {}
     if (!authorizedShells.has(event.sender) || event.senderFrame !== event.sender.mainFrame
@@ -211,9 +211,9 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     if (matched.candidates.length !== 1) throw Error('Existen impresoras ambiguas; verifique el perfil en Impresoras BETA')
     if (/offline/i.test(matched.candidates[0]?.status || '')) throw Error('Windows indica que la impresora está fuera de línea')
     const paper = profile.paper ?? defaultPaper(profile.label)
-    // Membretes: si el perfil tiene activa la impresión silenciosa, Prisma imprime sin diálogo
-    // (la confirmación ocurre antes, en la modal de la PWA). Etiquetas siguen con diálogo.
-    if (kind === 'letterhead' && profile.silentEnabled) {
+    // Si el perfil tiene activa la impresión silenciosa y el trabajo fue confirmado por el operador en la PWA
+    // (context.confirmed), Prisma imprime sin diálogo. Chat y WhatsApp conservan siempre el diálogo.
+    if (context.confirmed === true && profile.silentEnabled) {
       return { options: { ...silentOptions(state, result.printers, profile.id), ...paperOptions(paper, true) }, css: paperCss(paper), paper }
     }
     return { options: { ...paperOptions(paper, false), silent: false }, css: paperCss(paper), paper }

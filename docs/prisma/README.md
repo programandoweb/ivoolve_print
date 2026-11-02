@@ -96,3 +96,10 @@ Si el perfil **Membretes** tiene activa la *impresión silenciosa* (y Prisma aut
 supervisados de Prisma se envían directo a la cola vinculada, sin diálogo de Windows. La confirmación
 humana pasa a la PWA: el ícono de impresora del despacho abre una modal «¿Estás seguro de imprimir?».
 Sin la opción activa, el diálogo de Windows sigue apareciendo. Las etiquetas conservan siempre el diálogo.
+
+### Etiquetas de una orden de producción y silencioso confirmado (2026-11-02)
+
+- Trabajos `labels` con `production_order_id` traen un `payload.print` con una fila por variante (≤40 filas, ≤1000 etiquetas,
+  la suma debe coincidir con `quantity`) y se imprimen con el mismo `printLabels` que el flujo manual.
+- La impresión sin diálogo del perfil (Membretes o Etiquetas) solo aplica a trabajos con `source = 'print'` (confirmados en la PWA);
+  chat y WhatsApp siempre abren el diálogo. Ver ADR-0033 en `ivoolveFlow`.

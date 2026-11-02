@@ -45,7 +45,7 @@ test('supervised WhatsApp labels automatically open the existing dialog with qua
   const result = await h.invoke('supervised-execute', {job_id:51})
   assert.equal(result.status, 'submitted')
   assert.equal(h.calls.length, 1)
-  assert.deepEqual(h.calls[0], {kind:'labels',payload,context:{prismaSupervised:true}})
+  assert.deepEqual(h.calls[0], {kind:'labels',payload,context:{prismaSupervised:true,prismaConfirmed:false}})
   assert.ok(h.profiles.includes('prisma:labels'))
   assert.equal(h.requests.filter(x => x.url.endsWith('/station/print/complete')).length, 1)
   assert.equal((await h.invoke('supervised-execute',{job_id:51})).ok, false)
@@ -249,4 +249,24 @@ test('dual backend: every call goes only to the backend whose key it carries and
   const last = h.requests.at(-1)
   assert.ok(last.url.startsWith(DEV) && last.url.endsWith('/station/print/complete'))
   assert.match((await h.invoke('poll', { backend: 'staging' })).error, /Backend no autorizado/)
+})
+
+test('production labels job: several variants, confirmed source prints through the existing label handler; inconsistent payloads are refused', async () => {
+  const row = (code, variant, quantity) => ({ title: 'Body Lia', code: `${code} - ABC`, variant_name: variant, quantity, abbreviation: 'ABC' })
+  const payload = { print: [row('381', 'Negro', 10), row('382', 'Vinotinto', 10), row('383', 'Perla', 12)], abbreviation: 'ABC', batch_code: '6145' }
+  const job = { id: 71, kind: 'labels', number: '6567', quantity: 32, title: 'Body Lia', variant: '3 variantes', source: 'print', dispatch_id: null, production_order_id: 6567, payload }
+  const h = setup({ supervisedJob: job })
+  assert.equal((await h.invoke('supervised-next')).job.id, 71)
+  const done = await h.invoke('supervised-execute', { job_id: 71 })
+  assert.equal(done.status, 'submitted')
+  assert.equal(h.calls[0].kind, 'labels'); assert.equal(h.calls[0].payload.print.length, 3)
+  assert.deepEqual(h.calls[0].context, { prismaSupervised: true, prismaConfirmed: true })
+  // total declared by Laravel must match the rows
+  const bad = setup({ supervisedJob: { ...job, quantity: 31 } })
+  assert.match((await bad.invoke('supervised-next')).error, /no válido|inválidos/)
+  assert.equal(bad.calls.length, 0)
+  // a chat/WhatsApp job is never "confirmed", so it keeps the Windows dialog
+  const chat = setup({ supervisedJob: { ...job, source: 'chat', production_order_id: null, number: '381', quantity: 3, payload: label('381', 3).payload } })
+  await chat.invoke('supervised-next'); await chat.invoke('supervised-execute', { job_id: 71 })
+  assert.equal(chat.calls[0].context.prismaConfirmed, false)
 })

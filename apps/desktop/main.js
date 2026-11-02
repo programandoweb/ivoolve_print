@@ -67,7 +67,7 @@ async function printLabels(_event, payload, context = {}) {
     }
 
     const { options: printerOptions, css: profileCss } = context.prismaSupervised === true
-      ? await attachBetaPrinters.getPrismaPrintPlan(_event, 'labels')
+      ? await attachBetaPrinters.getPrismaPrintPlan(_event, 'labels', { confirmed: context.prismaConfirmed === true })
       : await attachBetaPrinters.getPrintPlan(_event)
 
     const printWindow = new BrowserWindow({
@@ -95,7 +95,7 @@ async function printLabels(_event, payload, context = {}) {
             marginType: 'none',
           },
           ...printerOptions,
-          ...(context.prismaSupervised === true ? { silent: false, copies: 1 } : {}),
+          ...(context.prismaSupervised === true ? { copies: 1 } : {}),
         },
         (success, errorType) => {
           printWindow.close()
