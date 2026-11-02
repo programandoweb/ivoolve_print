@@ -1,3 +1,5 @@
+// Clave de backend autorizada en Electron; sin ella se usa producción.
+export type PrismaBackend = 'prod' | 'dev'
 export type Command = { kind: 'labels' | 'letterhead'; number: string; quantity: number }
 export type Candidate = { id: number; number: string; kind: string; name: string }
 export type JobResult = Command & { ok: boolean; message: string }
@@ -17,11 +19,11 @@ export type PrismaResult = {
 declare global {
   interface Window {
     ivoolvePrisma?: {
-      status: (value: { token: string }) => Promise<PrismaResult>
-      poll: (value: { token: string }) => Promise<PrismaPoll>
-      acknowledge: (value: {token: string; receipt_ids: number[]}) => Promise<PrismaAcknowledgement>
-      supervisedNext: (value: {token: string}) => Promise<PrismaSupervisedNext>
-      supervisedExecute: (value: {token: string; job_id: number}) => Promise<PrismaSupervisedResult>
+      status: (value: { token: string; backend?: PrismaBackend }) => Promise<PrismaResult>
+      poll: (value: { token: string; backend?: PrismaBackend }) => Promise<PrismaPoll>
+      acknowledge: (value: {token: string; receipt_ids: number[]; backend?: PrismaBackend}) => Promise<PrismaAcknowledgement>
+      supervisedNext: (value: {token: string; backend?: PrismaBackend}) => Promise<PrismaSupervisedNext>
+      supervisedExecute: (value: {token: string; job_id: number; backend?: PrismaBackend}) => Promise<PrismaSupervisedResult>
       interpret: (value: { token: string; text: string; history: string[] }) => Promise<PrismaResult>
       execute: (value: { token: string; plan_token: string; confirmed: boolean }) => Promise<PrismaResult>
       choose: (value: { token: string; dispatchId: number }) => Promise<PrismaResult>
@@ -35,10 +37,10 @@ function bridge() {
 }
 export const prismaService = {
   status: (token: string) => bridge().status({ token }),
-  poll: (token: string) => bridge().poll({token}),
-  acknowledge: (token: string, receipt_ids: number[]) => bridge().acknowledge({token, receipt_ids}),
-  supervisedNext: (token: string) => bridge().supervisedNext({token}),
-  supervisedExecute: (token: string, job_id: number) => bridge().supervisedExecute({token, job_id}),
+  poll: (token: string, backend?: PrismaBackend) => bridge().poll({token, backend}),
+  acknowledge: (token: string, receipt_ids: number[], backend?: PrismaBackend) => bridge().acknowledge({token, receipt_ids, backend}),
+  supervisedNext: (token: string, backend?: PrismaBackend) => bridge().supervisedNext({token, backend}),
+  supervisedExecute: (token: string, job_id: number, backend?: PrismaBackend) => bridge().supervisedExecute({token, job_id, backend}),
   interpret: (token: string, text: string, history: string[]) => bridge().interpret({ token, text, history }),
   execute: (token: string, plan: PrismaResult, confirmed: boolean) => {
     if (!plan.plan_token || !plan.expires_at || plan.expires_at * 1000 <= Date.now()) throw Error('La solicitud venció. Escríbela nuevamente.')

@@ -1,9 +1,10 @@
 const { bytes, today } = require('../dispatch-print/service')
-const BASE = 'https://backend.delicetiendavirtual.com/api/v1/printing-agent/'
-const ORIGIN = 'https://ivoolve-print-frontend.vercel.app'
+const { apiBase, backendKey, frontendOrigin: ORIGIN } = require('../runtime-config')
 function token(value) {
   if (typeof value !== 'string' || !/^[A-Za-z0-9_.-]{1,8192}$/.test(value)) throw Error('Inicia sesión nuevamente.')
 }
+// Clave de backend del renderer ('prod' por defecto); nunca una URL.
+function apiBackend(value) { return backendKey(value?.backend) }
 function commands(value) {
   if (!Array.isArray(value) || value.length < 1 || value.length > 10) throw Error('Solicitud de impresión inválida.')
   let copies = 0; const seen = new Set()
@@ -30,10 +31,11 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
     try { origin = new URL(event.senderFrame.url).origin } catch {}
     if (!shells.has(event.sender) || event.senderFrame !== event.sender.mainFrame || origin !== ORIGIN) throw Error('Origen no autorizado.')
   }
-  async function request(action, auth, data, method = 'POST') {
+  async function request(action, auth, data, method = 'POST', backend) {
     token(auth)
+    const base = apiBase(backend) + 'printing-agent/'
     let response
-    try { response = await fetchImpl(BASE + action, { method, headers: { Accept: 'application/json', ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${auth}` }, ...(method === 'POST' ? { body: JSON.stringify(data) } : {}), redirect: 'error', signal: AbortSignal.timeout(action.startsWith('station/') ? 5000 : 90000) }) } catch { throw Error('No fue posible contactar a Prisma. Revisa la conexión; no se reintentó el envío.') }
+    try { response = await fetchImpl(base + action, { method, headers: { Accept: 'application/json', ...(method === 'POST' ? { 'Content-Type': 'application/json' } : {}), Authorization: `Bearer ${auth}` }, ...(method === 'POST' ? { body: JSON.stringify(data) } : {}), redirect: 'error', signal: AbortSignal.timeout(action.startsWith('station/') ? 5000 : 90000) }) } catch { throw Error('No fue posible contactar a Prisma. Revisa la conexión; no se reintentó el envío.') }
     const body = await bytes(response, 256 * 1024)
     let result
     try { result = JSON.parse(body.toString('utf8')) } catch { throw Error('Prisma devolvió una respuesta no válida. Actualiza el backend.') }
@@ -98,7 +100,7 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
   }
   handle('prisma:poll', async (_event, value) => {
     if (typeof stationId !== 'string' || !/^[0-9a-f-]{36}$/.test(stationId)) throw Error('Identidad de la estación no disponible.')
-    const result = await request('station/poll', value?.token, { station_id: stationId })
+    const result = await request('station/poll', value?.token, { station_id: stationId }, 'POST', value?.backend)
     if (result.connected !== true || !Array.isArray(result.signals) || result.signals.length > 20
       || result.signals.some(s => !Number.isSafeInteger(s.receipt_id) || !['labels', 'letterhead', 'channel', 'lookup'].includes(s.kind) || (s.document_number != null && (typeof s.document_number !== 'string' || !/^[0-9]{1,12}$/.test(s.document_number))) || (s.lookup_status != null && !['found', 'not_found', 'choose'].includes(s.lookup_status)) || (s.kind === 'lookup' && !['not_found', 'choose'].includes(s.lookup_status)) || (s.kind !== 'lookup' && ![null, undefined, 'found'].includes(s.lookup_status)) || (s.document_title != null && (typeof s.document_title !== 'string' || s.document_title.length > 120)) || (s.document_variant != null && (typeof s.document_variant !== 'string' || s.document_variant.length > 100)) || (s.document_query != null && (typeof s.document_query !== 'string' || s.document_query.length > 160)))) throw Error('Señales no reconocidas.')
     return { ok: true, connected: true, signals: result.signals }
@@ -106,7 +108,7 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
   handle('prisma:acknowledge', async (_event, value) => {
     if (!value || !Array.isArray(value.receipt_ids) || value.receipt_ids.length < 1 || value.receipt_ids.length > 20
       || value.receipt_ids.some(id => !Number.isSafeInteger(id) || id < 1)) throw Error('Acuse de señal inválido.')
-    const result = await request('station/acknowledge', value.token, { station_id: stationId, receipt_ids: value.receipt_ids })
+    const result = await request('station/acknowledge', value.token, { station_id: stationId, receipt_ids: value.receipt_ids }, 'POST', value.backend)
     if (!Number.isSafeInteger(result.acknowledged) || result.acknowledged < 0) throw Error('Acuse no reconocido.')
     return { ok: true, acknowledged: result.acknowledged }
   })
@@ -123,7 +125,7 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
       console.info('[Prisma supervised] Checking Laravel for pending jobs')
       lastSupervisedProbeLog = timestamp
     }
-    const received = await request('station/print/next', value?.token, { station_id: stationId })
+    const received = await request('station/print/next', value?.token, { station_id: stationId }, 'POST', value?.backend)
     const job = received.job
     if (job != null) console.info('[Prisma supervised] Job claimed; opening supervised flow, job_id:', job.id)
     if (job == null) return { ok: true, job: null }
@@ -139,7 +141,7 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
         || (job.kind === 'letterhead' && job.payload != null)) throw Error('Trabajo supervisado no válido; no se imprimió.')
     commands([{ kind: job.kind, number: job.number, quantity: job.quantity,
       ...(job.kind === 'labels' ? { payload: job.payload } : {}) }])
-    supervised.set(event.sender, { job, token: value.token })
+    supervised.set(event.sender, { job, token: value.token, backend: apiBackend(value) })
     return { ok: true, job: { id: job.id, kind: job.kind, number: job.number, quantity: job.quantity,
       title: job.title, variant: job.variant, source: job.source } }
   })
@@ -162,7 +164,7 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
   }
   handle('prisma:supervised-execute', async (event, value) => {
     const selected = supervised.get(event.sender)
-    if (!selected || selected.job.id !== value?.job_id || selected.token !== value?.token) {
+    if (!selected || selected.job.id !== value?.job_id || selected.token !== value?.token || selected.backend !== apiBackend(value)) {
       throw Error('La solicitud de impresión supervisada no está disponible.')
     }
     // Consume local authorization before calling a printer, so no duplicate
@@ -178,7 +180,7 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
       const result = job.kind === 'labels'
         ? await printLabels(event, job.payload, { prismaSupervised: true })
         : await printLetterhead(event, {
-          token: selected.token, number: job.number,
+          token: selected.token, number: job.number, backend: selected.backend,
           ...(job.dispatch_id != null ? { dispatchId: job.dispatch_id } : {}),
         }, { prismaSupervised: true })
       if (result?.ok && result.status !== 'choose') {
@@ -204,13 +206,13 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
     try {
       const receipt = await request('station/print/complete', selected.token, {
         station_id: stationId, job_id: job.id, outcome,
-      })
+      }, 'POST', selected.backend)
       recorded = receipt.recorded === true
     } catch { /* no print retry */ }
     return { ok: true, status: outcome, message, recorded, job_id: job.id }
   })
   handle('prisma:status', async (event, value) => {
-    const agent = await request('status', value?.token, null, 'GET')
+    const agent = await request('status', value?.token, null, 'GET', value?.backend)
     if (typeof agent.enabled !== 'boolean' || typeof agent.available !== 'boolean' || agent.slug !== 'prisma') throw Error('Estado de Prisma no reconocido.')
     return { ok: true, status: agent.available ? 'available' : 'unavailable', agent }
   })

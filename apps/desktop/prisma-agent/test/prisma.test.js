@@ -231,3 +231,22 @@ test('invalid diagnostic receipt list is blocked before any API call', async () 
   assert.equal(h.requests.length, 0)
   assert.equal(h.calls.length, 0)
 })
+
+test('dual backend: every call goes only to the backend whose key it carries and a claimed job stays bound to it', async () => {
+  const job = { id: 61, kind: 'letterhead', number: '01', quantity: 1, title: 'Membrete 01', variant: '', source: 'print', dispatch_id: 6571, payload: null }
+  const h = setup({ supervisedJob: job })
+  const DEV = 'https://dev.backend.delicetiendavirtual.com/api/v1/printing-agent/'; const PROD = 'https://backend.delicetiendavirtual.com/api/v1/printing-agent/'
+  await h.invoke('poll', { backend: 'dev' }); await h.invoke('poll')
+  assert.deepEqual(h.requests.map(r => r.url.slice(0, DEV.length) === DEV ? 'dev' : r.url.startsWith(PROD) ? 'prod' : '?'), ['dev', 'prod'])
+  assert.ok((await h.invoke('supervised-next', { backend: 'dev' })).job)
+  // Same job cannot be executed against another backend or with a foreign key.
+  assert.match((await h.invoke('supervised-execute', { job_id: 61 })).error, /no está disponible/)
+  assert.match((await h.invoke('supervised-execute', { job_id: 61, backend: 'https://evil.test' })).error, /Backend no autorizado/)
+  assert.equal(h.calls.length, 0)
+  const done = await h.invoke('supervised-execute', { job_id: 61, backend: 'dev' })
+  assert.equal(done.status, 'submitted')
+  assert.equal(h.calls[0].value.backend, 'dev'); assert.equal(h.calls[0].value.dispatchId, 6571)
+  const last = h.requests.at(-1)
+  assert.ok(last.url.startsWith(DEV) && last.url.endsWith('/station/print/complete'))
+  assert.match((await h.invoke('poll', { backend: 'staging' })).error, /Backend no autorizado/)
+})

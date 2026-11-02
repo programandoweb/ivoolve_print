@@ -5,6 +5,7 @@ const { randomUUID } = require('node:crypto')
 const { register: registerBetaPrinters } = require('./beta-printers')
 const dispatchPrint = require('./dispatch-print')
 const prismaAgent = require('./prisma-agent')
+const runtimeConfig = require('./runtime-config')
 dispatchPrint.registerScheme(require('electron').protocol)
 let attachDispatchPrinting
 let attachBetaPrinters
@@ -34,6 +35,7 @@ function createWindow() {
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      additionalArguments: [`--ivoolve-frontend-origin=${runtimeConfig.frontendOrigin}`],
       contextIsolation: true,
       nodeIntegration: false,
     },
@@ -41,8 +43,7 @@ function createWindow() {
   attachBetaPrinters(win)
   attachDispatchPrinting(win)
   attachPrisma(win)
-  //win.loadURL('http://localhost:3030')
-  win.loadURL('https://ivoolve-print-frontend.vercel.app')
+  win.loadURL(runtimeConfig.frontendOrigin)
 }
 
 async function printLabels(_event, payload, context = {}) {

@@ -155,7 +155,7 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
   // The remote shell can only open our local window. Configuration IPC remains local.
   ipcMain.handle('beta-printers:open-settings', (event) => {
     let allowedOrigin = false
-    try { allowedOrigin = new URL(event.senderFrame.url).origin === 'https://ivoolve-print-frontend.vercel.app' } catch {}
+    try { allowedOrigin = new URL(event.senderFrame.url).origin === require('../runtime-config').frontendOrigin } catch {}
     if (!authorizedShells.has(event.sender) || event.senderFrame !== event.sender.mainFrame || !allowedOrigin) throw Error('Origen no autorizado')
     open()
     return { ok: true }
@@ -186,7 +186,7 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     const options = paperOptions(paper, profile.silentEnabled)
     if (!profile.silentEnabled && paper.source === 'driver' && !css) return { options, css, paper }
     let allowedOrigin = false
-    try { allowedOrigin = new URL(event.senderFrame.url).origin === 'https://ivoolve-print-frontend.vercel.app' } catch {}
+    try { allowedOrigin = new URL(event.senderFrame.url).origin === require('../runtime-config').frontendOrigin } catch {}
     if (!authorizedShells.has(event.sender) || event.senderFrame !== event.sender.mainFrame || !allowedOrigin) throw Error('Origen no autorizado para impresión configurada')
     if (!profile.silentEnabled) return { options, css, paper }
     const result = await inventory(event.sender)
@@ -198,7 +198,7 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     let origin = ''
     try { origin = new URL(event.senderFrame.url).origin } catch {}
     if (!authorizedShells.has(event.sender) || event.senderFrame !== event.sender.mainFrame
-        || origin !== 'https://ivoolve-print-frontend.vercel.app') throw Error('Origen Prisma no autorizado')
+        || origin !== require('../runtime-config').frontendOrigin) throw Error('Origen Prisma no autorizado')
     const state = store.read()
     if (!state.enabled) throw Error('Configuración de impresoras desactivada')
     const id = kind === 'labels' ? state.labelsProfileId : kind === 'letterhead' ? state.letterheadProfileId : null

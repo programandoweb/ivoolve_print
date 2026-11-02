@@ -67,3 +67,25 @@ npm run build --workspace=frontend
 ```
 
 Si el backend no tiene las migraciones o una estación Windows no está ejecutando el Electron actualizado, las luces deben permanecer apagadas.
+
+## Doble backend (producción + desarrollo) — 2026-11-02
+
+Una sola ventana de Electron atiende a **producción y desarrollo** a la vez. Las bases de datos son
+independientes (dev es una copia no siempre sincronizada), por lo que cada backend tiene su propia cola
+y su propia lista de estaciones: Electron envía señal de vida y hace polling a ambos.
+
+- **Lista fija** en `apps/desktop/runtime-config.js` (`prod`, `dev`). El renderer solo envía la clave
+  (`backend`, por defecto `prod`), nunca una URL; una clave desconocida se rechaza (`Backend no autorizado.`).
+- **Cada trabajo queda atado a su backend**: `station/poll`, `acknowledge`, `print/next`, `print/complete`,
+  y la consulta del detalle y del PDF del despacho usan el host del backend que originó el trabajo.
+  `supervised-execute` exige la misma clave con la que se reclamó el trabajo.
+- **Tokens**: el de producción sale del login normal; el de dev, de “Conectar backend de desarrollo”
+  (`DevBackendConnection`, guardado en `localStorage` como `ivoolve_dev_session`). Nunca cruzan de backend.
+- **Un diálogo a la vez**: el mapa `supervised` y `busy` de `prisma-agent` sigue siendo por ventana, así
+  que dos backends no pueden abrir dos diálogos simultáneos.
+- El asistente de chat (`interpret/execute/choose`) y la búsqueda manual de membretes siguen en producción.
+- QA con frontend local: `IVOOLVE_PRINT_DEV=1` + `IVOOLVE_PRINT_FRONTEND_URL=http://localhost:3030`
+  (solo builds no empaquetadas).
+
+Pendiente de verificar: CORS de `dev.backend...` para el origen del frontend de Electron, y que los usuarios
+del espejo dev permitan iniciar sesión.

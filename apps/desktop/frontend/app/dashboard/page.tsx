@@ -20,6 +20,7 @@ import ProductionHeader from './ProductionHeader'
 import ProductionActions from './ProductionActions'
 import LetterheadSearch from './LetterheadSearch'
 import PrismaAssistant from '@/modules/prisma/PrismaAssistant'
+import DevBackendConnection from '@/modules/prisma/DevBackendConnection'
 import PrismaIndicators, { type PrismaLookupFeedback } from '@/modules/prisma/PrismaIndicators'
 import RequisitionAutocomplete from './RequisitionAutocomplete'
 import useRequisitionCache from '@/hooks/useRequisitionCache'
@@ -620,6 +621,7 @@ export default function Page() {
       </h1>
 
       <PrismaIndicators token={user?.token} manualResult={tagLookupFeedback} />
+      <DevBackendConnection />
       <PrismaAssistant token={user?.token} />
 
       {!data && (

@@ -29,7 +29,7 @@ function register({ BrowserWindow, ipcMain, protocol, net, profiles, fetchImpl =
   function authorize(event) {
     let origin
     try { origin = new URL(event.senderFrame.url).origin } catch {}
-    if (!shells.has(event.sender) || event.senderFrame !== event.sender.mainFrame || origin !== 'https://ivoolve-print-frontend.vercel.app') throw Error('Origen no autorizado')
+    if (!shells.has(event.sender) || event.senderFrame !== event.sender.mainFrame || origin !== require('../runtime-config').frontendOrigin) throw Error('Origen no autorizado')
   }
   function localJob(event) {
     const job = jobs.get(event.sender)

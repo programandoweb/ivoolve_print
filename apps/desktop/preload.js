@@ -5,7 +5,9 @@ contextBridge.exposeInMainWorld('api', {
 })
 
 // Only the production shell gets a launcher, never local configuration access.
-if (window.location.origin === 'https://ivoolve-print-frontend.vercel.app') {
+const allowedOrigin = (process.argv.find(a => a.startsWith('--ivoolve-frontend-origin=')) || '').split('=').slice(1).join('=')
+  || 'https://ivoolve-print-frontend.vercel.app'
+if (window.location.origin === allowedOrigin) {
   contextBridge.exposeInMainWorld('ivoolvePrisma', {
     status: value => ipcRenderer.invoke('prisma:status', value),
     poll: value => ipcRenderer.invoke('prisma:poll', value),

@@ -1,7 +1,7 @@
 'use client'
 
 import {useEffect, useRef, useState} from 'react'
-import {prismaService, type PrismaSignal, type PrismaSupervisedJob} from './prisma.service'
+import {prismaService, type PrismaBackend, type PrismaSignal, type PrismaSupervisedJob} from './prisma.service'
 
 export type PrismaLookupFeedback = {
   status: 'found' | 'not_found' | 'choose' | 'error'
@@ -20,7 +20,7 @@ const LABELS = [
   {kind: 'channel', name: 'Canal'},
 ] as const
 
-export default function PrismaIndicators({token, manualResult}: {token?: string; manualResult?: PrismaLookupFeedback | null}) {
+export default function PrismaIndicators({token, manualResult, backend}: {token?: string; manualResult?: PrismaLookupFeedback | null; backend?: PrismaBackend}) {
   const [connected, setConnected] = useState(false)
   const [flashes, setFlashes] = useState<Partial<Record<PrismaSignal['kind'], {at: number; source: string}>>>({})
   const [now, setNow] = useState(Date.now())
@@ -45,7 +45,7 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
       if (!active || polling) return
       polling = true
       try {
-        const result = await prismaService.poll(token)
+        const result = await prismaService.poll(token, backend)
         if (!active) return
         if (!result.ok || result.connected !== true || !Array.isArray(result.signals)) throw Error(result.error || 'Sin conexión')
         setConnected(true)
@@ -53,7 +53,7 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
         if (result.signals.length > 0) {
           const receiptIds = result.signals.map(s => s.receipt_id)
           // Never report simulation completed before Electron's authenticated ack.
-          const ack = await prismaService.acknowledge(token, receiptIds)
+          const ack = await prismaService.acknowledge(token, receiptIds, backend)
           if (!active) return
           if (!ack.ok || ack.acknowledged !== receiptIds.length) throw Error('Señal recibida, pero sin acuse completo')
           const at = Date.now()
@@ -91,7 +91,7 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
           printingRef.current = true
           void (async () => {
             try {
-              const pending = await prismaService.supervisedNext(token)
+              const pending = await prismaService.supervisedNext(token, backend)
               if (!active) return
               if (!pending.ok) {
                 if (pending.error) console.warn('Prisma: trabajo supervisado no disponible')
@@ -100,7 +100,7 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
               if (!pending.job) return
               const job = pending.job
               setRealJob({job, stage: 'rendering', message: 'Preparando documento. A continuación se abrirá el diálogo de Windows.'})
-              const result = await prismaService.supervisedExecute(token, job.id)
+              const result = await prismaService.supervisedExecute(token, job.id, backend)
               if (!active) return
               setRealJob({job, stage: result.status === 'submitted' ? 'submitted'
                 : result.status === 'profile_blocked' ? 'profile_blocked'
@@ -118,7 +118,7 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
     void tick()
     const interval = setInterval(() => {setNow(Date.now()); void tick()}, 3500)
     return () => {active = false; clearInterval(interval)}
-  }, [token])
+  }, [token, backend])
 
   const notice = manualResult && (!lookupResult?.at || (manualResult.at || 0) >= lookupResult.at) ? manualResult : lookupResult
   const noticeIsMembrete = (notice?.query || '').toLowerCase().startsWith('membrete ')
@@ -137,7 +137,7 @@ export default function PrismaIndicators({token, manualResult}: {token?: string;
 
   return <section aria-label="Diagnóstico Prisma" className="mx-auto mb-5 w-full max-w-3xl rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
     <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <h2 className="text-sm font-bold text-slate-800">Prisma · Test de conectividad</h2>
+      <h2 className="text-sm font-bold text-slate-800">Prisma · Test de conectividad{backend === 'dev' ? ' · Desarrollo' : ''}</h2>
       <span className="text-[11px] text-slate-500">{message}</span>
     </div>
     <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

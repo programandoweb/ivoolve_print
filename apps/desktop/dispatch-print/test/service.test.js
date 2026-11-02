@@ -84,3 +84,19 @@ test('verified dispatch ID prints the original PDF without today-only number sea
   assert.equal(calls.length, 3)
   await assert.rejects(service.downloadExact({ number: '1', token }), /Selección/)
 })
+
+test('backend key sends detail and PDF requests only to that backend and rejects unknown keys', async () => {
+  const hosts = []
+  const service = client(async url => {
+    const parsed = new URL(url); hosts.push(parsed.origin)
+    if (parsed.pathname.endsWith('/dashboard/dispatches/6571')) return new Response(JSON.stringify({ data: { order: { id: 6571, status: 'dispatch', dispatch_order_number: 1, dispatch_order_por: '2026-10-28T11:14:26', order_number: 'ozQMTWcN' } } }), { headers: { 'content-type': 'application/json' } })
+    return new Response('%PDF-1.7\nfixture', { headers: { 'content-type': 'application/pdf' } })
+  })
+  await service.downloadExact({ dispatchId: 6571, number: '1', token, backend: 'dev' })
+  assert.deepEqual(hosts, ['https://dev.backend.delicetiendavirtual.com', 'https://dev.backend.delicetiendavirtual.com'])
+  hosts.length = 0
+  await service.downloadExact({ dispatchId: 6571, number: '1', token })
+  assert.deepEqual(hosts, ['https://backend.delicetiendavirtual.com', 'https://backend.delicetiendavirtual.com'])
+  await assert.rejects(service.downloadExact({ dispatchId: 6571, number: '1', token, backend: 'https://evil.test' }), /Backend no autorizado/)
+  assert.equal(hosts.length, 2)
+})
