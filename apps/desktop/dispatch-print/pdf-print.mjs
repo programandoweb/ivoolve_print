@@ -11,6 +11,9 @@ try {
   const top = p.source === 'custom' ? p.topMm : 0; const bottom = p.source === 'custom' ? p.bottomMm : 0
   const usableWidth = width - left - right; const usableHeight = height - top - bottom
   const style = document.createElement('style'); style.textContent = `@page{size:${width}mm ${height}mm;margin:0}`; document.head.append(style)
+  // Impresora térmica: el bitmap se genera a su resolución nativa (1 píxel = 1 punto) y en blanco/negro
+  // puro, para que ni Chromium ni el driver reescalen ni tramen la imagen.
+  const PRINTER_DPI = 203; const THRESHOLD = 160
   let scaled = false; let pixels = 0
   for (let i = 1; i <= doc.numPages; i++) {
     const page = await doc.getPage(i); const original = page.getViewport({ scale: 1 })
@@ -19,16 +22,19 @@ try {
     const fit = Math.min(1, usableWidth / originalWidth, usableHeight / originalHeight)
     if (fit < 0.99) scaled = true
     const displayWidth = originalWidth * fit; const displayHeight = originalHeight * fit
-    const renderScale = Math.min(4, Math.max(1, (displayWidth * 300 / 25.4) / original.width))
-    const viewport = page.getViewport({ scale: renderScale })
+    const dotsWide = Math.max(1, Math.round(displayWidth / 25.4 * PRINTER_DPI)); const dotsHigh = Math.max(1, Math.round(displayHeight / 25.4 * PRINTER_DPI))
+    const viewport = page.getViewport({ scale: dotsWide / original.width })
     pixels += Math.ceil(viewport.width) * Math.ceil(viewport.height)
     if (pixels > 40000000) throw Error('PDF demasiado grande para renderizar.')
     const sheet = document.createElement('section'); sheet.className = 'pdf-page'; sheet.style.width = width + 'mm'; sheet.style.height = height + 'mm'
-    const canvas = document.createElement('canvas'); canvas.width = Math.ceil(viewport.width); canvas.height = Math.ceil(viewport.height)
-    canvas.style.width = displayWidth + 'mm'; canvas.style.height = displayHeight + 'mm'
-    canvas.style.left = (left + (usableWidth - displayWidth) / 2 + p.offsetXMm) + 'mm'; canvas.style.top = (top + p.offsetYMm) + 'mm'
+    const canvas = document.createElement('canvas'); canvas.width = dotsWide; canvas.height = dotsHigh
+    canvas.style.width = (dotsWide / PRINTER_DPI * 25.4) + 'mm'; canvas.style.height = (dotsHigh / PRINTER_DPI * 25.4) + 'mm'; canvas.style.imageRendering = 'pixelated'
+    canvas.style.left = (left + (usableWidth - dotsWide / PRINTER_DPI * 25.4) / 2 + p.offsetXMm) + 'mm'; canvas.style.top = (top + p.offsetYMm) + 'mm'
     sheet.append(canvas); document.getElementById('pages').append(sheet)
     await page.render({ canvasContext: canvas.getContext('2d'), canvas, viewport, background: 'rgb(255,255,255)' }).promise
+    const context = canvas.getContext('2d'); const image = context.getImageData(0, 0, canvas.width, canvas.height); const d = image.data
+    for (let k = 0; k < d.length; k += 4) { const v = (d[k] * 299 + d[k + 1] * 587 + d[k + 2] * 114) / 1000 < THRESHOLD ? 0 : 255; d[k] = d[k + 1] = d[k + 2] = v; d[k + 3] = 255 }
+    context.putImageData(image, 0, 0)
     page.cleanup()
   }
   await document.fonts.ready
