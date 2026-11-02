@@ -89,3 +89,10 @@ y su propia lista de estaciones: Electron envía señal de vida y hace polling a
 
 Pendiente de verificar: CORS de `dev.backend...` para el origen del frontend de Electron, y que los usuarios
 del espejo dev permitan iniciar sesión.
+
+### Membretes de Prisma sin diálogo (opcional por perfil)
+
+Si el perfil **Membretes** tiene activa la *impresión silenciosa* (y Prisma autorizado), los membretes
+supervisados de Prisma se envían directo a la cola vinculada, sin diálogo de Windows. La confirmación
+humana pasa a la PWA: el ícono de impresora del despacho abre una modal «¿Estás seguro de imprimir?».
+Sin la opción activa, el diálogo de Windows sigue apareciendo. Las etiquetas conservan siempre el diálogo.

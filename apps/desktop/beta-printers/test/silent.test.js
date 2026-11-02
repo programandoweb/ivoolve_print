@@ -282,3 +282,21 @@ test('letterhead plan uses independent Membretes destination, modes and 101x24 s
   await assert.rejects(h.profileController.getPrintPlan(h.event, 'letterhead'), /desactivado/)
   await assert.rejects(h.handlers['beta-printers:setLetterheadProfile'](h.event, id), /Origen/)
 })
+
+test('Prisma letterhead plan is silent only when the Membretes profile has silent mode armed; labels keep the dialog', async t => {
+  const h = await runtime(t)
+  h.open()
+  const event = { sender: h.windows[1].webContents, senderFrame: h.windows[1].webContents.mainFrame }
+  const invoke = (method, value) => h.handlers[`beta-printers:${method}`](event, value)
+  const b = (await invoke('getStatus')).data.profiles[1].id
+  await invoke('saveProfile', { id: b, label: 'Membretes', identity })
+  assert.equal((await invoke('setLetterheadProfile', b)).ok, true); assert.equal((await invoke('setLabelsProfile', b)).ok, true)
+  assert.equal((await invoke('setPrismaEnabled', { id: b, enabled: true })).ok, true)
+  const shell = { sender: h.windows[0].webContents, senderFrame: h.windows[0].webContents.mainFrame }
+  const plan = kind => h.profileController.getPrismaPrintPlan(shell, kind)
+  assert.equal((await plan('letterhead')).options.silent, false)
+  assert.equal((await invoke('setProfileSettings', { id: b, enabled: true, silentEnabled: true })).ok, true)
+  const silent = (await plan('letterhead')).options
+  assert.equal(silent.silent, true); assert.equal(silent.deviceName, 'Labels')
+  assert.equal((await plan('labels')).options.silent, false)
+})

@@ -193,7 +193,7 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     if (store.read() !== state) throw Error('Configuración modificada durante la impresión. Vuelva a enviar el trabajo.')
     return { options: { ...silentOptions(state, result.printers, profile.id), ...options }, css, paper }
   }
-  // Strictly scoped to Prisma-supervised jobs; never inherits silentEnabled.
+  // Prisma-supervised jobs: solo los membretes heredan silentEnabled del perfil local.
   attach.getPrismaPrintPlan = async (event, kind = 'labels') => {
     let origin = ''
     try { origin = new URL(event.senderFrame.url).origin } catch {}
@@ -211,6 +211,11 @@ function register({ app, BrowserWindow, Menu, ipcMain, dialog }) {
     if (matched.candidates.length !== 1) throw Error('Existen impresoras ambiguas; verifique el perfil en Impresoras BETA')
     if (/offline/i.test(matched.candidates[0]?.status || '')) throw Error('Windows indica que la impresora está fuera de línea')
     const paper = profile.paper ?? defaultPaper(profile.label)
+    // Membretes: si el perfil tiene activa la impresión silenciosa, Prisma imprime sin diálogo
+    // (la confirmación ocurre antes, en la modal de la PWA). Etiquetas siguen con diálogo.
+    if (kind === 'letterhead' && profile.silentEnabled) {
+      return { options: { ...silentOptions(state, result.printers, profile.id), ...paperOptions(paper, true) }, css: paperCss(paper), paper }
+    }
     return { options: { ...paperOptions(paper, false), silent: false }, css: paperCss(paper), paper }
   }
   attach.getPrintOptions = async event => (await attach.getPrintPlan(event)).options
