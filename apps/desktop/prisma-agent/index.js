@@ -35,7 +35,7 @@ function commands(value) {
   if (copies > 100) throw Error('El límite por solicitud es de 100 impresiones.')
   return value
 }
-function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, fetchImpl = fetch, now = () => new Date() }) {
+function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, wake = null, fetchImpl = fetch, now = () => new Date() }) {
   const shells = new WeakSet(); const busy = new WeakSet(); const sessions = new WeakMap()
   const supervised = new WeakMap()
   let lastSupervisedProbeLog = 0
@@ -111,12 +111,15 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
       } finally { if (!diagnostic) busy.delete(event.sender) }
     })
   }
-  handle('prisma:poll', async (_event, value) => {
+  handle('prisma:poll', async (event, value) => {
     if (typeof stationId !== 'string' || !/^[0-9a-f-]{36}$/.test(stationId)) throw Error('Identidad de la estación no disponible.')
     const result = await request('station/poll', value?.token, { station_id: stationId }, 'POST', value?.backend)
     if (result.connected !== true || !Array.isArray(result.signals) || result.signals.length > 20
       || result.signals.some(s => !Number.isSafeInteger(s.receipt_id) || !['labels', 'letterhead', 'channel', 'lookup'].includes(s.kind) || (s.document_number != null && (typeof s.document_number !== 'string' || !/^[0-9]{1,12}$/.test(s.document_number))) || (s.lookup_status != null && !['found', 'not_found', 'choose'].includes(s.lookup_status)) || (s.kind === 'lookup' && !['not_found', 'choose'].includes(s.lookup_status)) || (s.kind !== 'lookup' && ![null, undefined, 'found'].includes(s.lookup_status)) || (s.document_title != null && (typeof s.document_title !== 'string' || s.document_title.length > 120)) || (s.document_variant != null && (typeof s.document_variant !== 'string' || s.document_variant.length > 100)) || (s.document_query != null && (typeof s.document_query !== 'string' || s.document_query.length > 160)))) throw Error('Señales no reconocidas.')
-    return { ok: true, connected: true, signals: result.signals }
+    // Aviso inmediato por Event Hub (opcional): `realtime` indica al renderer que puede espaciar el polling.
+    let realtime = false
+    try { realtime = wake ? wake.ensure(event.sender, value.token, apiBackend(value)) === true : false } catch { realtime = false }
+    return { ok: true, connected: true, signals: result.signals, realtime }
   })
   handle('prisma:acknowledge', async (_event, value) => {
     if (!value || !Array.isArray(value.receipt_ids) || value.receipt_ids.length < 1 || value.receipt_ids.length > 20

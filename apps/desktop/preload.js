@@ -18,6 +18,12 @@ if (window.location.origin === allowedOrigin) {
     execute: value => ipcRenderer.invoke('prisma:execute', value),
     choose: value => ipcRenderer.invoke('prisma:choose', value),
     cancel: () => ipcRenderer.invoke('prisma:cancel'),
+    // Aviso inmediato de impresión pendiente (Event Hub). Devuelve la función para cancelar la suscripción.
+    onWake: callback => {
+      const listener = () => callback()
+      ipcRenderer.on('prisma:wake', listener)
+      return () => ipcRenderer.removeListener('prisma:wake', listener)
+    },
   })
   contextBridge.exposeInMainWorld('ivoolveDispatchPrint', {
     run: value => ipcRenderer.invoke('dispatch-print:run', value),

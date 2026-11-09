@@ -33,6 +33,10 @@ export default function PrismaIndicators({token, manualResult, backend}: {token?
   useEffect(() => {
     let active = true
     let polling = false
+    // Aviso inmediato (Event Hub): si llega con un ciclo en curso se repite al terminar, sin perderlo.
+    let wakePending = false
+    let realtime = false
+    let lastTick = 0
     setConnected(false)
     setFlashes({})
     setSimulation(null)
@@ -42,11 +46,14 @@ export default function PrismaIndicators({token, manualResult, backend}: {token?
       return
     }
     const tick = async () => {
-      if (!active || polling) return
+      if (!active) return
+      if (polling) { wakePending = true; return }
       polling = true
+      lastTick = Date.now()
       try {
         const result = await prismaService.poll(token, backend)
         if (!active) return
+        realtime = result.realtime === true
         if (!result.ok || result.connected !== true || !Array.isArray(result.signals)) throw Error(result.error || 'Sin conexión')
         setConnected(true)
         setMessage('Comunicación con Laravel confirmada')
@@ -113,11 +120,20 @@ export default function PrismaIndicators({token, manualResult, backend}: {token?
         }
       } catch (e) {
         if (active) {setConnected(false); setMessage(e instanceof Error ? e.message : 'No fue posible comprobar la estación')}
-      } finally {polling = false}
+      } finally {
+        polling = false
+        if (wakePending && active) {wakePending = false; void tick()}
+      }
     }
     void tick()
-    const interval = setInterval(() => {setNow(Date.now()); void tick()}, 3500)
-    return () => {active = false; clearInterval(interval)}
+    const interval = setInterval(() => {
+      setNow(Date.now())
+      // Con el aviso por Event Hub activo el polling solo sostiene el latido de la estación y el respaldo.
+      if (realtime && Date.now() - lastTick < 12000) return
+      void tick()
+    }, 3500)
+    const stopWake = window.ivoolvePrisma?.onWake?.(() => {void tick()})
+    return () => {active = false; clearInterval(interval); stopWake?.()}
   }, [token, backend])
 
   const notice = manualResult && (!lookupResult?.at || (manualResult.at || 0) >= lookupResult.at) ? manualResult : lookupResult

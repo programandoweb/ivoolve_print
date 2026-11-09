@@ -7,6 +7,10 @@ const BACKENDS = Object.freeze({
   prod: 'https://backend.delicetiendavirtual.com',
   dev: 'https://dev.backend.delicetiendavirtual.com',
 })
+// Event Hub (Socket.IO) por backend. Sin entrada = sin aviso inmediato: se usa solo el polling.
+const SOCKETS = Object.freeze({
+  prod: 'https://socket.delicetiendavirtual.com',
+})
 const PROD_FRONTEND = 'https://ivoolve-print-frontend.vercel.app'
 
 function packaged() {
@@ -28,4 +32,6 @@ function backendKey(key = 'prod') {
 // https://<backend>/api/v1/ — misma forma que usaban las constantes BASE.
 function apiBase(key) { return BACKENDS[backendKey(key)] + '/api/v1/' }
 
-module.exports = { frontendOrigin: frontendOrigin(), resolveFrontendOrigin: frontendOrigin, backendKey, apiBase, BACKENDS, PROD_FRONTEND }
+function socketUrl(key) { return SOCKETS[backendKey(key)] || null }
+
+module.exports = { frontendOrigin: frontendOrigin(), resolveFrontendOrigin: frontendOrigin, backendKey, apiBase, socketUrl, BACKENDS, SOCKETS, PROD_FRONTEND }

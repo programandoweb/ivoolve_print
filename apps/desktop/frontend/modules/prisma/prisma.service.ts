@@ -4,7 +4,7 @@ export type Command = { kind: 'labels' | 'letterhead'; number: string; quantity:
 export type Candidate = { id: number; number: string; kind: string; name: string }
 export type JobResult = Command & { ok: boolean; message: string }
 export type PrismaSignal = {receipt_id: number; signal_id: number; kind: 'labels' | 'letterhead' | 'channel' | 'lookup'; source: 'chat' | 'whatsapp' | 'print'; document_number?: string | null; lookup_status?: 'found' | 'not_found' | 'choose' | null; document_title?: string | null; document_variant?: string | null; document_query?: string | null; created_at: string}
-export type PrismaPoll = {ok: boolean; connected?: boolean; signals?: PrismaSignal[]; error?: string}
+export type PrismaPoll = {ok: boolean; connected?: boolean; signals?: PrismaSignal[]; realtime?: boolean; error?: string}
 export type PrismaSupervisedJob = {id: number; kind: 'labels' | 'letterhead'; number: string; quantity: number; title: string; variant: string; source: string}
 export type PrismaSupervisedNext = {ok: boolean; job?: PrismaSupervisedJob | null; error?: string}
 export type PrismaSupervisedResult = {ok: boolean; status?: string; message?: string; recorded?: boolean; job_id?: number; error?: string}
@@ -28,6 +28,8 @@ declare global {
       execute: (value: { token: string; plan_token: string; confirmed: boolean }) => Promise<PrismaResult>
       choose: (value: { token: string; dispatchId: number }) => Promise<PrismaResult>
       cancel: () => Promise<PrismaResult>
+      /** Aviso inmediato de impresión pendiente (Event Hub). Ausente en versiones antiguas de Electron. */
+      onWake?: (callback: () => void) => () => void
     }
   }
 }
