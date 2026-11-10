@@ -12,15 +12,9 @@ if not exist "node_modules" (
   exit /b 1
 )
 
-echo [1/3] Compilando API NestJS...
-call npm run build --workspace=api
-if errorlevel 1 (
-  echo [ERROR] Fallo la compilacion de la API. No se iniciara produccion.
-  pause
-  exit /b 1
-)
+echo [1/3] Verificando API compilada...
 if not exist "apps\api\dist\main.js" (
-  echo [ERROR] No se encontro apps\api\dist\main.js.
+  echo [ERROR] No existe la API compilada. Ejecuta compilar.bat primero.
   pause
   exit /b 1
 )
