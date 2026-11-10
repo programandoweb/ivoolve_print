@@ -16,6 +16,7 @@
     "dev:socket": "npm run start:dev --workspace=printer-socket-nest",
     "start": "concurrently -k \"npm run dev:api\" \"npm run dev:desktop\"",
     "test:logging": "node --test --test-timeout=60000 apps/shared/logging/test/logging.test.js apps/desktop/logging/test/logging.test.js apps/api/test/logging.test.js",
+    "test:dispatch-oversize": "node --test --test-timeout=60000 apps/desktop/dispatch-print/test/oversize.test.js",
     "test:print-history": "node --test --test-timeout=60000 apps/shared/print-history/test/print-history.test.js apps/desktop/print-history/test/print-history.test.js"
   },
   "devDependencies": {

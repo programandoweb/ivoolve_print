@@ -227,7 +227,8 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
         outcome = 'cancelled_or_failed'
         message = result?.status === 'choose'
           ? 'Hay varios despachos con este número. No se imprimió: especifica el despacho.'
-          : 'El diálogo se canceló o falló. No se reintentó la impresión.'
+          // Si el membrete informó un motivo (ya filtrado por dispatch-print), se muestra en vez de ocultarlo.
+          : (typeof result?.error === 'string' && result.error && result.error.length <= 300 ? `No se imprimió: ${result.error} No se reintentó.` : 'El diálogo se canceló o falló. No se reintentó la impresión.')
       }
     } catch (error) {
       const diagnostic = explainSupervisedError(error, stage)

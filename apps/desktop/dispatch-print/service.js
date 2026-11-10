@@ -39,7 +39,17 @@ function client(fetchImpl = fetch) {
     try { response = await fetchImpl(base + suffix, { method: 'GET', headers: { Accept: pdf ? 'application/pdf' : 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, redirect: 'error', signal: AbortSignal.timeout(15000) }) } catch { throw Error('No fue posible consultar el servidor de despachos. Revisa la conexión.') }
     if ([401, 403].includes(response.status)) throw Error('Sesión vencida o sin permiso para consultar despachos. Inicia sesión nuevamente.')
     if (!response.ok) throw Error(pdf ? 'No se pudo obtener el PDF original del despacho.' : 'No fue posible consultar los despachos.')
-    const body = await bytes(response, pdf ? 15 * 1024 * 1024 : 2 * 1024 * 1024)
+    const limit = pdf ? 15 * 1024 * 1024 : 2 * 1024 * 1024
+    let body
+    try { body = await bytes(response, limit) } catch (error) {
+      // Dice QUÉ respuesta se pasó del límite y cuánto declara el servidor (diagnóstico); el límite no cambia.
+      if (/supera el tamaño permitido/.test(String(error?.message))) {
+        const what = pdf ? 'del PDF original del despacho' : suffix.startsWith('dashboard/dispatches?') ? 'del listado de despachos' : 'del detalle del despacho'
+        const declared = Number(response.headers.get('content-length') || 0)
+        throw Error(`La respuesta ${what} supera el tamaño permitido (límite ${limit / 1048576} MB${declared ? `, el servidor declara ${(declared / 1048576).toFixed(1)} MB` : ''}).`)
+      }
+      throw error
+    }
     if (pdf) {
       if (!response.headers.get('content-type')?.toLowerCase().includes('application/pdf') || body.subarray(0, 5).toString() !== '%PDF-') throw Error('El servidor no devolvió un PDF válido. No se imprimió.')
       return body
