@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
 const fs = require('node:fs')
 const { randomUUID } = require('node:crypto')
@@ -7,6 +7,8 @@ const dispatchPrint = require('./dispatch-print')
 const prismaAgent = require('./prisma-agent')
 const { createWake } = require('./prisma-agent/wake')
 const runtimeConfig = require('./runtime-config')
+// Logging técnico aislado (docs/logging/README.md). Debe crearse antes de registrar cualquier IPC.
+const logs = require('./logging').create({ app, ipcMain, dialog, BrowserWindow, runtimeConfig })
 dispatchPrint.registerScheme(require('electron').protocol)
 let attachDispatchPrinting
 let attachBetaPrinters
@@ -22,9 +24,10 @@ function prismaStationId() {
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true })
     fs.writeFileSync(file, id, { mode: 0o600 })
-  } catch {
+  } catch (error) {
     // Fail open for the existing manual printing app; diagnostics still use an
     // in-memory station ID for this run instead of crashing Electron.
+    logs.logger.warn('config.station_id_unwritable', 'No se pudo guardar el identificador de la estación; se usa uno temporal', { error })
   }
   return id
 }
@@ -46,6 +49,7 @@ function createWindow() {
   attachBetaPrinters(win)
   attachDispatchPrinting(win)
   attachPrisma(win)
+  logs.attachShell(win)
   win.loadURL(runtimeConfig.frontendOrigin)
 }
 
@@ -55,6 +59,8 @@ async function printLabels(_event, payload, context = {}) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        // Solo hacia la API local: permite correlacionar los logs de Electron y de la API.
+        ...logs.correlationHeaders(),
       },
       body: JSON.stringify(payload),
     })
@@ -62,6 +68,7 @@ async function printLabels(_event, payload, context = {}) {
     const html = await response.text()
 
     if (!response.ok) {
+      logs.logger.error('api.request_failed', 'La API local no pudo generar el HTML de etiquetas', { metadata: { target: 'local_api', http_status: response.status } })
       return {
         ok: false,
         message: 'No fue posible generar el HTML de impresión',
@@ -119,6 +126,10 @@ async function printLabels(_event, payload, context = {}) {
       )
     })
   } catch (error) {
+    // La API local caída (ECONNREFUSED) es un fallo de conexión, no de impresión.
+    if (error?.cause?.code === 'ECONNREFUSED' || error?.message === 'fetch failed') {
+      logs.logger.error('api.request_failed', 'No se pudo contactar a la API local de impresión', { error, metadata: { target: 'local_api', code: error?.cause?.code } })
+    }
     return {
       ok: false,
       message: error?.message || 'Error interno al imprimir',
@@ -131,6 +142,14 @@ app.whenReady().then(() => {
   attachBetaPrinters = registerBetaPrinters({ app, BrowserWindow, ipcMain, ...require('electron') })
   attachDispatchPrinting = dispatchPrint.register({ ...require('electron'), profiles: attachBetaPrinters })
   const stationId = prismaStationId()
-  attachPrisma = prismaAgent.register({ ipcMain, profiles: attachBetaPrinters, printLabels, printLetterhead: attachDispatchPrinting.run, stationId, wake: createWake({ stationId }) })
+  logs.setStationId(stationId)
+  logs.logger.info('app.ready', 'Electron listo; módulos de impresión registrados')
+  // Las funciones de impresión que usa Prisma se envuelven solo para registrar su resultado técnico.
+  attachPrisma = prismaAgent.register({
+    ipcMain, profiles: attachBetaPrinters, stationId, log: logs.prismaLog,
+    printLabels: logs.instrumentPrint('labels', printLabels),
+    printLetterhead: logs.instrumentPrint('letterhead', attachDispatchPrinting.run),
+    wake: createWake({ stationId, events: logs.prismaLog }),
+  })
   createWindow()
 })

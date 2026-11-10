@@ -31,4 +31,11 @@ if (window.location.origin === allowedOrigin) {
   contextBridge.exposeInMainWorld('ivoolvePrinterSettings', {
     open: () => ipcRenderer.invoke('beta-printers:open-settings'),
   })
+  // Diagnóstico técnico local (docs/logging). Los filtros viajan como datos: nunca rutas.
+  contextBridge.exposeInMainWorld('ivoolveLogs', {
+    query: value => ipcRenderer.invoke('logs:query', value),
+    info: () => ipcRenderer.invoke('logs:info'),
+    export: value => ipcRenderer.invoke('logs:export', value),
+    report: value => ipcRenderer.invoke('logs:report', value),
+  })
 }

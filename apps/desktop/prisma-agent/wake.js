@@ -5,7 +5,8 @@ const { apiBase, socketUrl } = require('../runtime-config')
 // renderer que consulte a Laravel (`station/print/next`) sin esperar al próximo ciclo de polling.
 // La cola, la autorización y el trabajo siguen en Laravel; si el socket cae, el polling sigue activo.
 // El token nunca se registra en logs y cada conexión solo sirve al backend que lo emitió.
-function createWake({ stationId, ioFactory = io, urlFor = socketUrl, baseFor = apiBase, log = console }) {
+// `events` (opcional): diagnóstico técnico persistente; solo transiciones, nunca el token ni payloads.
+function createWake({ stationId, ioFactory = io, urlFor = socketUrl, baseFor = apiBase, log = console, events = null }) {
   let socket = null; let current = null; let target = null; let joined = false
 
   function close() {
@@ -29,11 +30,14 @@ function createWake({ stationId, ioFactory = io, urlFor = socketUrl, baseFor = a
     socket.on('connect', () => {
       socket.emit('printing.join', { station_id: stationId }, ack => {
         joined = ack?.ok === true
-        if (!joined) log.info?.('[Prisma wake] Join rechazado:', String(ack?.code || 'sin respuesta').slice(0, 40))
+        if (!joined) {
+          log.info?.('[Prisma wake] Join rechazado:', String(ack?.code || 'sin respuesta').slice(0, 40))
+          events?.warn('socket.join_rejected', 'El Event Hub rechazó unir la estación a su sala', { metadata: { code: String(ack?.code || 'sin respuesta').slice(0, 40) } })
+        } else { events?.socketOk?.(); events?.info('socket.connected', 'Socket de avisos conectado y unido a la sala de la estación') }
       })
     })
-    socket.on('disconnect', () => { joined = false })
-    socket.on('connect_error', () => { joined = false })
+    socket.on('disconnect', reason => { joined = false; events?.warn('socket.disconnected', 'Socket de avisos desconectado', { metadata: { reason: String(reason || '').slice(0, 60) } }) })
+    socket.on('connect_error', error => { joined = false; events?.socketFailure?.(error) })
     socket.on('printing.job.pending', () => {
       if (target && !target.isDestroyed?.()) target.send('prisma:wake')
     })

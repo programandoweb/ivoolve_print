@@ -7,6 +7,7 @@ import { Suspense } from "react";
 import Snackbar from "./components/snackbar";
 import ToastListener from "./components/ToastListener";
 import PrinterSettings from "./components/PrinterSettings";
+import LogsViewer from "./components/LogsViewer";
 
 
 const inter = Inter({ subsets: ["latin"] });
@@ -97,6 +98,7 @@ export default function RootLayout({
               <ToastListener/>
               <Snackbar />
               <PrinterSettings />
+              <LogsViewer />
               {children}        
             </Suspense>
           </ThemeProvider>
