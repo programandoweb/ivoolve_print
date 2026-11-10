@@ -8,6 +8,7 @@ import Snackbar from "./components/snackbar";
 import ToastListener from "./components/ToastListener";
 import PrinterSettings from "./components/PrinterSettings";
 import LogsViewer from "./components/LogsViewer";
+import PrintHistory from "./components/PrintHistory";
 
 
 const inter = Inter({ subsets: ["latin"] });
@@ -99,6 +100,7 @@ export default function RootLayout({
               <Snackbar />
               <PrinterSettings />
               <LogsViewer />
+              <PrintHistory />
               {children}        
             </Suspense>
           </ThemeProvider>

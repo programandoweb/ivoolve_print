@@ -4,6 +4,7 @@
 // - Registra, no decide: ningún flujo de impresión depende de este módulo y todo fallo de
 //   registro se absorbe. NO es auditoría de impresiones ni confirma salida física.
 const { randomUUID } = require('node:crypto')
+const { AsyncLocalStorage } = require('node:async_hooks')
 const fs = require('node:fs')
 const { createLogger, resolveRoot, queryLogs, serialize, infoLogs, LIMITS } = require('../../shared/logging')
 
@@ -13,7 +14,7 @@ const CONFIG_CHANNELS = new Set(['setEnabled', 'setProfileSettings', 'setPrismaE
 const ORIGIN_ERROR = /^Origen\b.*no autorizado/i
 
 const noopLog = Object.freeze({
-  log() {}, debug() {}, info() {}, warn() {}, error() {}, pollOk() {}, pollFail() {}, backendOk() {}, backendFailure() {},
+  log() {}, debug() {}, info() {}, warn() {}, error() {}, withJob: (_m, fn) => fn(), pollOk() {}, pollFail() {}, backendOk() {}, backendFailure() {},
   withCorrelation: (_id, fn) => fn(),
 })
 
@@ -26,6 +27,15 @@ function create({ app, ipcMain, dialog, BrowserWindow, runtimeConfig, processRef
   const reportWindow = { start: Date.now(), count: 0 }
   let firstWindow = true
   let polling = false
+  // Historial de impresiones (módulo aparte): se enlaza al arrancar con setPrintTrace().
+  let printTrace = null
+  // Metadatos del trabajo supervisado (id, origen, pedidor) por canal lateral: no se añaden a los argumentos de impresión.
+  const jobStore = new AsyncLocalStorage()
+  const traced = (descriptor, run) => {
+    if (!printTrace) return run()
+    const jobMeta = descriptor.context?.jobMeta || jobStore.getStore()
+    return printTrace({ ...descriptor, context: { ...(descriptor.context || {}), ...(jobMeta ? { jobMeta } : {}) }, correlationId: logger.currentCorrelation() }, run)
+  }
 
   // ---- arranque, configuración y ciclo de vida -------------------------------------------
   logger.info('app.started', 'ivoolve_print (Electron) iniciado', {
@@ -91,7 +101,8 @@ function create({ app, ipcMain, dialog, BrowserWindow, runtimeConfig, processRef
     return (event, payload, context = {}) => logger.withCorrelation(null, async () => {
       const started = Date.now()
       try {
-        const result = await fn(event, payload, context)
+        const origin = context?.prismaSupervised === true ? 'prisma_supervised' : 'prisma_assistant'
+        const result = await traced({ kind, origin, event, payload, context }, () => fn(event, payload, context))
         logPrint(kind, result, context, Date.now() - started)
         return result
       } catch (error) {
@@ -110,7 +121,9 @@ function create({ app, ipcMain, dialog, BrowserWindow, runtimeConfig, processRef
         const printKind = PRINT_CHANNELS[channel]
         // En impresión, el resultado se registra DENTRO del contexto para heredar el correlation_id.
         const run = async () => {
-          const value = await handler(event, ...args)
+          const value = await (printKind
+            ? traced({ kind: printKind, origin: printKind === 'labels' ? 'manual_labels' : 'manual_letterhead', event, payload: args[0], context: {} }, () => handler(event, ...args))
+            : handler(event, ...args))
           if (printKind) logPrint(printKind, value, {}, Date.now() - started)
           return value
         }
@@ -133,6 +146,7 @@ function create({ app, ipcMain, dialog, BrowserWindow, runtimeConfig, processRef
   const prismaLog = {
     log: (...a) => logger.log(...a), debug: (...a) => logger.debug(...a), info: (...a) => logger.info(...a), warn: (...a) => logger.warn(...a), error: (...a) => logger.error(...a),
     withCorrelation: (id, fn) => logger.withCorrelation(id, fn),
+    withJob: (meta, fn) => jobStore.run(meta, fn),
     pollOk() {
       if (!polling) { polling = true; logger.info('polling.started', 'La estación empezó a consultar a Laravel') }
       logger.sampler.ok('poll', 'polling.recovered', 'El polling se recuperó')
@@ -211,7 +225,7 @@ function create({ app, ipcMain, dialog, BrowserWindow, runtimeConfig, processRef
   })
 
   return {
-    logger, root, instrumentPrint, attachShell, prismaLog, setStationId: id => logger.setStationId(id),
+    logger, root, instrumentPrint, setPrintTrace: fn => { printTrace = typeof fn === 'function' ? fn : null }, attachShell, prismaLog, setStationId: id => logger.setStationId(id),
     correlationHeaders: () => { const id = logger.currentCorrelation(); return id ? { 'X-Correlation-Id': id } : {} },
     newCorrelationId: () => randomUUID(),
   }

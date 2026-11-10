@@ -2,7 +2,7 @@
 
 Sistema centralizado, aislado y persistente de **logs técnicos y operativos** de Electron y de la API local.
 
-> **Alcance.** Esto es diagnóstico técnico. **No** es auditoría de impresiones: no registra quién imprimió, copias, colas ni historial. Un evento `print.*_submitted` significa únicamente que la llamada de impresión terminó sin error técnico (`webContents.print` devolvió `success`, o el trabajo fue aceptado por el diálogo/cola de Windows). **No confirma salida física del papel.**
+> **Alcance.** Esto es diagnóstico técnico. **No** es auditoría de impresiones: no registra quién imprimió, copias, colas ni historial. Esa trazabilidad vive en un módulo aparte, con su propio botón: ver [print-history.md](print-history.md). Un evento `print.*_submitted` significa únicamente que la llamada de impresión terminó sin error técnico (`webContents.print` devolvió `success`, o el trabajo fue aceptado por el diálogo/cola de Windows). **No confirma salida física del papel.**
 
 ## Arquitectura
 

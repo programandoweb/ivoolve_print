@@ -31,6 +31,13 @@ if (window.location.origin === allowedOrigin) {
   contextBridge.exposeInMainWorld('ivoolvePrinterSettings', {
     open: () => ipcRenderer.invoke('beta-printers:open-settings'),
   })
+  // Historial de impresiones (docs/logging/print-history.md): el usuario logueado se informa a Electron.
+  contextBridge.exposeInMainWorld('ivoolvePrintHistory', {
+    setActor: value => ipcRenderer.invoke('print-history:set-actor', value),
+    query: value => ipcRenderer.invoke('print-history:query', value),
+    info: () => ipcRenderer.invoke('print-history:info'),
+    export: value => ipcRenderer.invoke('print-history:export', value),
+  })
   // Diagnóstico técnico local (docs/logging). Los filtros viajan como datos: nunca rutas.
   contextBridge.exposeInMainWorld('ivoolveLogs', {
     query: value => ipcRenderer.invoke('logs:query', value),

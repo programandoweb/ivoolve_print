@@ -9,6 +9,9 @@ const { createWake } = require('./prisma-agent/wake')
 const runtimeConfig = require('./runtime-config')
 // Logging técnico aislado (docs/logging/README.md). Debe crearse antes de registrar cualquier IPC.
 const logs = require('./logging').create({ app, ipcMain, dialog, BrowserWindow, runtimeConfig })
+// Historial de impresiones (quién imprimió y qué): módulo independiente de los logs técnicos.
+const printHistory = require('./print-history').create({ app, ipcMain, dialog, BrowserWindow, runtimeConfig })
+logs.setPrintTrace(printHistory.trace)
 dispatchPrint.registerScheme(require('electron').protocol)
 let attachDispatchPrinting
 let attachBetaPrinters
@@ -50,6 +53,7 @@ function createWindow() {
   attachDispatchPrinting(win)
   attachPrisma(win)
   logs.attachShell(win)
+  printHistory.attachShell(win)
   win.loadURL(runtimeConfig.frontendOrigin)
 }
 
@@ -143,6 +147,7 @@ app.whenReady().then(() => {
   attachDispatchPrinting = dispatchPrint.register({ ...require('electron'), profiles: attachBetaPrinters })
   const stationId = prismaStationId()
   logs.setStationId(stationId)
+  printHistory.setStationId(stationId)
   logs.logger.info('app.ready', 'Electron listo; módulos de impresión registrados')
   // Las funciones de impresión que usa Prisma se envuelven solo para registrar su resultado técnico.
   attachPrisma = prismaAgent.register({

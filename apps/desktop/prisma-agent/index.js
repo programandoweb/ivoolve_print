@@ -35,7 +35,7 @@ function commands(value) {
   if (copies > 100) throw Error('El límite por solicitud es de 100 impresiones.')
   return value
 }
-const NOOP_LOG = { log() {}, debug() {}, info() {}, warn() {}, error() {}, pollOk() {}, pollFail() {}, backendOk() {}, backendFailure() {}, withCorrelation: (_id, fn) => fn() }
+const NOOP_LOG = { log() {}, debug() {}, info() {}, warn() {}, error() {}, pollOk() {}, pollFail() {}, backendOk() {}, backendFailure() {}, withCorrelation: (_id, fn) => fn(), withJob: (_meta, fn) => fn() }
 function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, wake = null, fetchImpl = fetch, now = () => new Date(), log = NOOP_LOG }) {
   const shells = new WeakSet(); const busy = new WeakSet(); const sessions = new WeakMap()
   const supervised = new WeakMap()
@@ -209,14 +209,17 @@ function register({ ipcMain, profiles, printLabels, printLetterhead, stationId, 
     try {
       // Solo lo pedido y confirmado en la PWA (source 'print') puede salir sin diálogo; chat y WhatsApp siempre con diálogo.
       const confirmed = job.source === 'print'
+      // Metadatos para el historial de impresiones (no afectan a la impresión).
+      const jobMeta = { job_id: job.id, job_source: job.source, production_order_id: job.production_order_id, document_number: job.number, dispatch_id: job.dispatch_id, requested_by: job.requested_by }
       await profiles.getPrismaPrintPlan(event, job.kind, { confirmed })
       stage = 'prepare_and_open_dialog'
-      const result = job.kind === 'labels'
-        ? await printLabels(event, job.payload, { prismaSupervised: true, prismaConfirmed: confirmed })
-        : await printLetterhead(event, {
+      // jobMeta viaja por un canal lateral (withJob), sin tocar los argumentos de la impresión.
+      const result = await log.withJob(jobMeta, () => job.kind === 'labels'
+        ? printLabels(event, job.payload, { prismaSupervised: true, prismaConfirmed: confirmed })
+        : printLetterhead(event, {
           token: selected.token, number: job.number, backend: selected.backend,
           ...(job.dispatch_id != null ? { dispatchId: job.dispatch_id } : {}),
-        }, { prismaSupervised: true, prismaConfirmed: confirmed })
+        }, { prismaSupervised: true, prismaConfirmed: confirmed }))
       if (result?.ok && result.status !== 'choose') {
         outcome = 'submitted'
         message = 'El operador confirmó el diálogo. Enviado a la cola Windows; no se confirma la salida física.'
