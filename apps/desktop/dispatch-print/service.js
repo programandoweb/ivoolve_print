@@ -39,7 +39,9 @@ function client(fetchImpl = fetch) {
     try { response = await fetchImpl(base + suffix, { method: 'GET', headers: { Accept: pdf ? 'application/pdf' : 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) }, redirect: 'error', signal: AbortSignal.timeout(15000) }) } catch { throw Error('No fue posible consultar el servidor de despachos. Revisa la conexión.') }
     if ([401, 403].includes(response.status)) throw Error('Sesión vencida o sin permiso para consultar despachos. Inicia sesión nuevamente.')
     if (!response.ok) throw Error(pdf ? 'No se pudo obtener el PDF original del despacho.' : 'No fue posible consultar los despachos.')
-    const limit = pdf ? 15 * 1024 * 1024 : 2 * 1024 * 1024
+    // El detalle (`dashboard/dispatches/{id}`) incluye la orden completa y el catálogo de códigos de barras:
+    // en pedidos grandes pesa varios MB aunque aquí solo se use `order`. El listado conserva su límite de 2 MB.
+    const limit = pdf ? 15 * 1024 * 1024 : suffix.startsWith('dashboard/dispatches?') ? 2 * 1024 * 1024 : 16 * 1024 * 1024
     let body
     try { body = await bytes(response, limit) } catch (error) {
       // Dice QUÉ respuesta se pasó del límite y cuánto declara el servidor (diagnóstico); el límite no cambia.
